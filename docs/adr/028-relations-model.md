@@ -1,6 +1,6 @@
 # Relations Model
 
-Date: 2026-10-02
+Date: 2026-10-10
 
 Status: Draft
 
@@ -10,39 +10,27 @@ Relations are the values that point to a Subject: Pablo Picasso's "Birth place" 
 ([#630](https://github.com/ProfessionalWiki/NeoWiki/issues/630)) collected questions about them that the model left
 open:
 
-- How does a value get context, such as the source of a birth date?
-- Does a Relation need an ID ([ADR 10](010-add-guids-to-relations.md)) if it carries no data of its own?
-- Can a property point to Subjects of several Schemas, such as a Creator that is a Person or a Group?
+- Can a Relation hold data of its own, such as a source for Picasso's birth place?
 - What happens when a Relation points to a Subject that does not exist?
-- Are Subjects that share a page related ([ADR 7](007-multiple-subjects-per-page.md))?
 - Does a relation property need a second name for its graph edges?
+- Can a property point to Subjects of several Schemas, such as a Creator that is a Person or a Group?
+- Are Subjects that share a page related ([ADR 7](007-multiple-subjects-per-page.md))?
 
 ## Decision
 
-### 1. Context on a value is a Subject, not an edge property
+### 1. Relations hold no data of their own
 
-A value that needs context becomes a Subject with its own Schema
-([Qualifiers and References](../qualifiers-and-references.md)). If Picasso's birth date needs a source, his Subject
-points to a Birth that holds the date and the source. The Birth's Schema can declare its Subjects dependent, so that the
-Birth is edited, stored and removed with its Person ([ADR 35](035-dependent-subjects.md)).
+A Relation is just an ID and a target. Its property-value pairs are removed
+([#1119](https://github.com/ProfessionalWiki/NeoWiki/issues/1119)): they were a second way to add context, only for
+links, and had no Schema and no editor. The ID stays, so that the graph and Mappings can keep track of a link across
+edits ([ADR 10](010-add-guids-to-relations.md)).
 
-Edge properties, the extra fields a Relation can carry, are removed: they add context only to a link, never to a date,
-and have no Schema and no editor. A Relation is an ID and a target
-([#1119](https://github.com/ProfessionalWiki/NeoWiki/issues/1119)).
+Context on a link goes into a Subject in between, as context on any other value already does
+([Qualifiers and References](../qualifiers-and-references.md)). If Picasso's birth place needs a source, Picasso points
+to a Birth that holds the place and the source. The Birth's Schema can declare its Subjects dependent, so that the Birth
+is edited, stored and removed with Picasso ([ADR 35](035-dependent-subjects.md)).
 
-### 2. Each Relation keeps its ID
-
-The ID gives a Relation a stable identity across edits. [Mappings](../authoring/mapping-format.md) use it to name the
-nodes they create for individual Relations.
-
-### 3. A relation property targets one or more Schemas
-
-A relation property lists one or more target Schemas ([#991](https://github.com/ProfessionalWiki/NeoWiki/issues/991)). A
-Relation to a Subject of another Schema is
-[`relation-target-schema-mismatch`](../api/validation-codes.md#relation-target-schema-mismatch), an error that can block
-the save ([ADR 26](026-validation-severity-levels.md)).
-
-### 4. Missing targets are red links
+### 2. Missing targets are red links
 
 A Relation may point to a Subject that does not exist, as a wiki link may point to a page nobody has written. Imports
 rely on this to create Subjects that point to each other
@@ -51,18 +39,23 @@ rely on this to create Subjects that point to each other
 link that offers to create the Subject ([#1120](https://github.com/ProfessionalWiki/NeoWiki/issues/1120)). Relations to
 Dependent Subjects are the exception ([ADR 35](035-dependent-subjects.md)).
 
-### 5. Sharing a page does not relate Subjects
-
-Subjects that share a page are related only through relation properties, as Subjects on different pages are
-([#959](https://github.com/ProfessionalWiki/NeoWiki/issues/959)).
-
-The Main Subject stays: it says which Subject the page is about, and the page shows it automatically.
-
-### 6. A relation property has one name
+### 3. A relation property has one name
 
 A relation property's `relation` field is removed: graph edges and RDF predicates take the property name, as other
 properties' RDF predicates already do, so a link has the same name everywhere
 ([#1553](https://github.com/ProfessionalWiki/NeoWiki/issues/1553)).
+
+### 4. A relation property targets one or more Schemas
+
+A relation property lists one or more target Schemas ([#991](https://github.com/ProfessionalWiki/NeoWiki/issues/991)). A
+Relation to a Subject of another Schema is
+[`relation-target-schema-mismatch`](../api/validation-codes.md#relation-target-schema-mismatch), an error that can block
+the save ([ADR 26](026-validation-severity-levels.md)).
+
+### 5. Subjects on one page are not related automatically
+
+Subjects that share a page are related only through relation properties, as Subjects on different pages are
+([#959](https://github.com/ProfessionalWiki/NeoWiki/issues/959)).
 
 ## Consequences
 
