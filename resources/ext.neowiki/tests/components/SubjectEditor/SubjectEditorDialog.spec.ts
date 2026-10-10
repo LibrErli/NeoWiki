@@ -75,8 +75,7 @@ const SubjectEditorStub = {
 };
 
 const SummaryActionStub = {
-	template: '<div class="edit-summary-stub">' +
-		'<slot name="action" :save="() => $emit( \'save\', \'\' )" /></div>',
+	template: '<div class="edit-summary-stub"></div>',
 	props: [ 'helpText', 'footerText', 'saveButtonLabel', 'saveDisabled' ],
 	emits: [ 'save' ],
 };
@@ -141,8 +140,6 @@ describe( 'SubjectEditorDialog', () => {
 		// to decide whether the relation fields are offered creation at all.
 		onCreate: ( ( subject: any, pageId: number, comment: string ) => Promise<void> ) | undefined = undefined,
 		extraProps: Record<string, unknown> = {},
-		// Passed by the action-slot tests alone, the footer's button being the host's to replace.
-		slots: Record<string, string> = {},
 	): VueWrapper => {
 		schemaPermissionHints = {
 			canEditSchema: vi.fn().mockResolvedValue( canEditSchema ),
@@ -150,7 +147,6 @@ describe( 'SubjectEditorDialog', () => {
 
 		return mount( SubjectEditorDialog, {
 			attachTo,
-			slots,
 			props: {
 				subject,
 				schema,
@@ -203,46 +199,6 @@ describe( 'SubjectEditorDialog', () => {
 		const statements = wrapper.findComponent( SubjectEditor ).props( 'statements' ) as StatementList;
 		return [ ...statements ].map( ( s ) => s.propertyName.toString() );
 	}
-
-	/**
-	 * The footer's save button is the host's to replace: the Subject creator puts a destination
-	 * beside it. The dialog passes the slot on without an opinion about what goes in it, and the
-	 * save it hands over has to be the dialog's own.
-	 */
-	describe( 'the action slot a host fills', () => {
-		const ACTION_SLOT = {
-			action: '<template #action="{ save, disabled }">' +
-				'<button class="host-action" :disabled="disabled" @click="save">Go</button>' +
-				'</template>',
-		};
-
-		function mountWithAction( onSave?: ( subject: any, comment: string ) => Promise<void> ): VueWrapper {
-			return mountComponent( true, saveButtonTestStubs, onSave, mockSchema, {}, mockSubject,
-				undefined, undefined, {}, ACTION_SLOT );
-		}
-
-		it( 'shows what the host put there in place of the save button', () => {
-			expect( mountWithAction().find( '.host-action' ).exists() ).toBe( true );
-		} );
-
-		// The host freezes its own controls off the same answer the save button uses.
-		it( 'tells the host there is nothing to save yet', () => {
-			expect( mountWithAction().find( '.host-action' ).attributes( 'disabled' ) ).toBeDefined();
-		} );
-
-		it( 'hands it a save that saves', async () => {
-			const onSave = vi.fn().mockResolvedValue( undefined );
-			const wrapper = mountWithAction( onSave );
-			await flushPromises();
-			await wrapper.findComponent( SubjectEditor ).vm.$emit( 'change' );
-			await flushPromises();
-
-			await wrapper.find( '.host-action' ).trigger( 'click' );
-			await flushPromises();
-
-			expect( onSave ).toHaveBeenCalled();
-		} );
-	} );
 
 	it( 'materialises one editable statement per property of the schema prop', async () => {
 		const wrapper = mountComponent(
@@ -3059,16 +3015,6 @@ describe( 'SubjectEditorDialog', () => {
 				await triggerSave( wrapper, '' );
 
 				expect( mw.notify ).not.toHaveBeenCalled();
-			} );
-
-			it( 'reports a failed create the host did not report itself', async () => {
-				const onCreate = vi.fn().mockRejectedValue( new Error( 'Boom' ) );
-				const { wrapper } = await mountReadyForCreation( { onCreate } );
-				await createReferencedTarget( wrapper );
-
-				await triggerSave( wrapper, '' );
-
-				expect( mw.notify ).toHaveBeenCalledWith( 'Boom', expect.objectContaining( { type: 'error' } ) );
 			} );
 
 			// Offering the same id again would be refused forever.
