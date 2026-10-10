@@ -11,9 +11,9 @@ Relations are the values that point to a Subject: Pablo Picasso's "Birth place" 
 model left open:
 
 - Can a Relation hold data of its own, such as a source for Picasso's birth place?
-- Can a property point to Subjects of several Schemas, such as a Creator that is a Person or a Group?
+- Can a relation Property Definition list several target Schemas, such as Person and Group for a Creator?
 - What happens when a Relation points to a Subject that does not exist?
-- Does a relation property need a second name for its graph edges?
+- Does a relation Property Definition need a second name for its graph edges?
 - Are Subjects that share a page related ([ADR 7](007-multiple-subjects-per-page.md))?
 
 ## Decision
@@ -32,10 +32,10 @@ is edited, stored and removed with Picasso ([ADR 35](035-dependent-subjects.md))
 The ID stays, so that the graph and Mappings can keep track of a link across edits
 ([ADR 10](010-add-guids-to-relations.md)).
 
-### 2. A relation property targets one or more Schemas
+### 2. A relation Property Definition lists one or more target Schemas
 
-A relation property lists one or more target Schemas ([#991](https://github.com/ProfessionalWiki/NeoWiki/issues/991)). A
-Relation to a Subject of another Schema is
+A relation Property Definition lists one or more target Schemas
+([#991](https://github.com/ProfessionalWiki/NeoWiki/issues/991)). A Relation to a Subject of another Schema is
 [`relation-target-schema-mismatch`](../api/validation-codes.md#relation-target-schema-mismatch), an error that can block
 the save ([ADR 26](026-validation-severity-levels.md)).
 
@@ -48,15 +48,15 @@ rely on this to create Subjects that point to each other
 link that offers to create the Subject ([#1120](https://github.com/ProfessionalWiki/NeoWiki/issues/1120)). Relations to
 Dependent Subjects are the exception ([ADR 35](035-dependent-subjects.md)).
 
-### 4. A relation property has one name
+### 4. A relation Property Definition has one name
 
-A relation property's `relation` field is removed: graph edges and RDF predicates take the property name, as other
-properties' RDF predicates already do, so a link has the same name everywhere
+A relation Property Definition's `relation` field is removed: graph edges and RDF predicates take the property name, as
+other properties' RDF predicates already do, so a link has the same name everywhere
 ([#1553](https://github.com/ProfessionalWiki/NeoWiki/issues/1553)).
 
 ### 5. Subjects on one page are not related automatically
 
-Subjects that share a page are related only through relation properties, as Subjects on different pages are
+Subjects that share a page are related only through Relations, as Subjects on different pages are
 ([#959](https://github.com/ProfessionalWiki/NeoWiki/issues/959)).
 
 ## Consequences
@@ -64,8 +64,8 @@ Subjects that share a page are related only through relation properties, as Subj
 - Each value with context adds a Subject, which counts toward [ADR 29](029-scalability-targets.md)'s scalability
   targets.
 - Cypher queries match Relations by property name, such as `` `Birth place` ``, not by verb phrases such as `BORN_IN`.
-- Renaming a relation property renames its graph edges and RDF predicates, as renaming any other property already does
-  ([ADR 17](017-names-as-identifiers.md)).
+- Renaming a relation Property Definition renames its graph edges and RDF predicates, as renaming any other Property
+  Definition already does ([ADR 17](017-names-as-identifiers.md)).
 - The Schema and Subject formats change incompatibly. NeoWiki is not in production, so that is acceptable.
 - Out of scope:
   - targets narrower than a Schema, such as only the Persons who are painters;
