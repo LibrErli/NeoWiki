@@ -7,8 +7,8 @@ Status: Draft
 ## Context
 
 Relations are the values that point to a Subject: Pablo Picasso's "Birth place" points to Málaga. The Relations epic
-([#630](https://github.com/ProfessionalWiki/NeoWiki/issues/630)) collected questions about them that the model left
-open:
+([#630](https://github.com/ProfessionalWiki/NeoWiki/issues/630)) collected questions about them that NeoWiki's initial
+model left open:
 
 - Can a Relation hold data of its own, such as a source for Picasso's birth place?
 - What happens when a Relation points to a Subject that does not exist?
