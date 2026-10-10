@@ -64,6 +64,8 @@ Subjects that share a page are related only through relation properties, as Subj
 - Cypher queries match Relations by property name, such as `` `Birth place` ``, not by verb phrases such as `BORN_IN`.
 - Renaming a relation property renames its graph edges and RDF predicates, as renaming any other property already does
   ([ADR 17](017-names-as-identifiers.md)).
+- In an RDFS export, a property with several target Schemas gets no range
+  ([#1163](https://github.com/ProfessionalWiki/NeoWiki/issues/1163)).
 - The Schema and Subject formats change incompatibly. NeoWiki is not in production, so that is acceptable.
 - Out of scope:
   - targets narrower than a Schema, such as only the Persons who are painters;
