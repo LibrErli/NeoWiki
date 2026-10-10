@@ -11,9 +11,9 @@ Relations are the values that point to a Subject: Pablo Picasso's "Birth place" 
 model left open:
 
 - Can a Relation hold data of its own, such as a source for Picasso's birth place?
+- Can a property point to Subjects of several Schemas, such as a Creator that is a Person or a Group?
 - What happens when a Relation points to a Subject that does not exist?
 - Does a relation property need a second name for its graph edges?
-- Can a property point to Subjects of several Schemas, such as a Creator that is a Person or a Group?
 - Are Subjects that share a page related ([ADR 7](007-multiple-subjects-per-page.md))?
 
 ## Decision
@@ -22,15 +22,24 @@ model left open:
 
 A Relation is just an ID and a target. Its property-value pairs are removed
 ([#1119](https://github.com/ProfessionalWiki/NeoWiki/issues/1119)): they were a second way to add context, only for
-links, and had no Schema and no editor. The ID stays, so that the graph and Mappings can keep track of a link across
-edits ([ADR 10](010-add-guids-to-relations.md)).
+links, and had no Schema and no editor.
 
 Context on a link goes into a Subject in between, as context on any other value already does
 ([Qualifiers and References](../qualifiers-and-references.md)). If Picasso's birth place needs a source, Picasso points
 to a Birth that holds the place and the source. The Birth's Schema can declare its Subjects dependent, so that the Birth
 is edited, stored and removed with Picasso ([ADR 35](035-dependent-subjects.md)).
 
-### 2. Missing targets are red links
+The ID stays, so that the graph and Mappings can keep track of a link across edits
+([ADR 10](010-add-guids-to-relations.md)).
+
+### 2. A relation property targets one or more Schemas
+
+A relation property lists one or more target Schemas ([#991](https://github.com/ProfessionalWiki/NeoWiki/issues/991)). A
+Relation to a Subject of another Schema is
+[`relation-target-schema-mismatch`](../api/validation-codes.md#relation-target-schema-mismatch), an error that can block
+the save ([ADR 26](026-validation-severity-levels.md)).
+
+### 3. Missing targets are red links
 
 A Relation may point to a Subject that does not exist, as a wiki link may point to a page nobody has written. Imports
 rely on this to create Subjects that point to each other
@@ -39,18 +48,11 @@ rely on this to create Subjects that point to each other
 link that offers to create the Subject ([#1120](https://github.com/ProfessionalWiki/NeoWiki/issues/1120)). Relations to
 Dependent Subjects are the exception ([ADR 35](035-dependent-subjects.md)).
 
-### 3. A relation property has one name
+### 4. A relation property has one name
 
 A relation property's `relation` field is removed: graph edges and RDF predicates take the property name, as other
 properties' RDF predicates already do, so a link has the same name everywhere
 ([#1553](https://github.com/ProfessionalWiki/NeoWiki/issues/1553)).
-
-### 4. A relation property targets one or more Schemas
-
-A relation property lists one or more target Schemas ([#991](https://github.com/ProfessionalWiki/NeoWiki/issues/991)). A
-Relation to a Subject of another Schema is
-[`relation-target-schema-mismatch`](../api/validation-codes.md#relation-target-schema-mismatch), an error that can block
-the save ([ADR 26](026-validation-severity-levels.md)).
 
 ### 5. Subjects on one page are not related automatically
 
@@ -68,8 +70,8 @@ Subjects that share a page are related only through relation properties, as Subj
 - Out of scope:
   - targets narrower than a Schema, such as only the Persons who are painters;
   - Relations to any Subject regardless of its Schema;
-  - cardinalities other than one or many;
   - Schema hierarchies, such as Person and Group below an Actor Schema;
+  - cardinalities other than one or many;
   - "no value" and "unknown value" markers ([#937](https://github.com/ProfessionalWiki/NeoWiki/issues/937));
   - showing referencing Subjects on pages and Views ([#1528](https://github.com/ProfessionalWiki/NeoWiki/issues/1528)),
     and adding a referencing Subject from its target's editor
