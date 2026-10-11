@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import SchemaCreatorDialog from '@/components/SchemaCreator/SchemaCreatorDialog.vue';
 import RelationAttributesEditor from '@/components/SchemaEditor/Property/RelationAttributesEditor.vue';
-import SchemaPicker from '@/components/common/SchemaPicker.vue';
+import TargetSchemasInput from '@/components/SchemaEditor/Property/TargetSchemasInput.vue';
 import { newRelationProperty } from '@/domain/propertyTypes/Relation';
 import SummaryAction from '@/components/common/SummaryAction.vue';
 import { useSchemaStore } from '@/stores/SchemaStore.ts';
@@ -347,7 +347,7 @@ describe( 'SchemaCreatorDialog', () => {
 						setup: () => ( { property: newRelationProperty( {} ) } ),
 						template: '<RelationAttributesEditor :property="property" />',
 					},
-					SchemaPicker: { template: '<div></div>', emits: [ 'select', 'create' ] },
+					TargetSchemasInput: { template: '<div></div>', emits: [ 'update:modelValue', 'create' ] },
 					SeverityInput: true,
 					SummaryAction: SummaryActionStub,
 					CloseConfirmationDialog: CloseConfirmationDialogStub,
@@ -363,7 +363,7 @@ describe( 'SchemaCreatorDialog', () => {
 		} );
 		await flushPromises();
 
-		wrapper.findComponent( SchemaPicker ).vm.$emit( 'create', 'Artist' );
+		wrapper.findComponent( TargetSchemasInput ).vm.$emit( 'create', 'Artist' );
 		await flushPromises();
 
 		const stacked = wrapper.findAllComponents( SchemaCreatorDialog ).filter( ( dialog ) => dialog.vm !== wrapper.vm );
