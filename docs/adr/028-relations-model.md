@@ -61,21 +61,26 @@ Subjects that share a page are related only through Relations, as Subjects on di
 
 ## Consequences
 
-- Qualification requires additional subjects
-- NeoWiki's data model remains simple
+- Qualification requires additional Subjects.
+- NeoWiki's data model remains simple.
+- A relation Property Definition can accept Subjects of several Schemas, such as Person and Group; a set used by many
+  Property Definitions is repeated on each ([#1627](https://github.com/ProfessionalWiki/NeoWiki/issues/1627)).
 - Cypher queries match Relations by property name, such as `` `Birth place` ``, not by verb phrases such as `BORN_IN`.
 - Renaming a relation Property Definition renames its graph edges and RDF predicates, as renaming any other Property
   Definition already does ([ADR 17](017-names-as-identifiers.md)).
 - The Schema and Subject formats change incompatibly. NeoWiki is not in production, so that is acceptable.
-- Out of scope:
-  - targets narrower than a Schema, such as only the Persons who are painters;
-  - Relations to any Subject regardless of its Schema;
-  - Schema hierarchies, such as Person and Group below an Actor Schema ([#1627](https://github.com/ProfessionalWiki/NeoWiki/issues/1627));
-  - cardinalities other than one or many;
-  - "no value" and "unknown value" markers ([#937](https://github.com/ProfessionalWiki/NeoWiki/issues/937));
-  - showing referencing Subjects on pages and Views ([#1528](https://github.com/ProfessionalWiki/NeoWiki/issues/1528)),
-    and adding a referencing Subject from its target's editor
-    ([#1530](https://github.com/ProfessionalWiki/NeoWiki/issues/1530)).
+
+## Out of Scope
+
+- Targets narrower than a Schema, such as only the Persons who are painters
+- Relations to any Subject regardless of its Schema
+- Schema hierarchies, such as Person and Group below an Actor Schema
+  ([#1627](https://github.com/ProfessionalWiki/NeoWiki/issues/1627))
+- Cardinalities other than one or many
+- "No value" and "unknown value" markers ([#937](https://github.com/ProfessionalWiki/NeoWiki/issues/937))
+- Showing referencing Subjects on pages and Views ([#1528](https://github.com/ProfessionalWiki/NeoWiki/issues/1528)),
+  and adding a referencing Subject from its target's editor
+  ([#1530](https://github.com/ProfessionalWiki/NeoWiki/issues/1530))
 
 ## Related
 
