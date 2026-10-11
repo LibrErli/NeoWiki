@@ -1,6 +1,6 @@
 # Relations Model
 
-Date: 2026-10-10
+Date: 2026-10-11
 
 Status: Draft
 
@@ -61,8 +61,8 @@ Subjects that share a page are related only through Relations, as Subjects on di
 
 ## Consequences
 
-- Each value with context adds a Subject, which counts toward [ADR 29](029-scalability-targets.md)'s scalability
-  targets.
+- Qualification requires additional subjects
+- NeoWiki's data model remains simple
 - Cypher queries match Relations by property name, such as `` `Birth place` ``, not by verb phrases such as `BORN_IN`.
 - Renaming a relation Property Definition renames its graph edges and RDF predicates, as renaming any other Property
   Definition already does ([ADR 17](017-names-as-identifiers.md)).
@@ -70,7 +70,7 @@ Subjects that share a page are related only through Relations, as Subjects on di
 - Out of scope:
   - targets narrower than a Schema, such as only the Persons who are painters;
   - Relations to any Subject regardless of its Schema;
-  - Schema hierarchies, such as Person and Group below an Actor Schema;
+  - Schema hierarchies, such as Person and Group below an Actor Schema ([#1627](https://github.com/ProfessionalWiki/NeoWiki/issues/1627));
   - cardinalities other than one or many;
   - "no value" and "unknown value" markers ([#937](https://github.com/ProfessionalWiki/NeoWiki/issues/937));
   - showing referencing Subjects on pages and Views ([#1528](https://github.com/ProfessionalWiki/NeoWiki/issues/1528)),
