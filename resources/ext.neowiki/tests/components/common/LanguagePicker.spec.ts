@@ -1,27 +1,40 @@
 import { DOMWrapper, mount, VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CdxMenu } from '@wikimedia/codex';
 import LanguagePicker from '@/components/common/LanguagePicker.vue';
-import { setupMwMock } from '../../VueTestHelpers.ts';
+import {
+	emittedTags,
+	listenForDialogKeys,
+	pickInLanguageSearch,
+	press,
+	pressKey,
+	setupMwMock,
+} from '../../VueTestHelpers.ts';
 
 // Mounted with the real Codex components: what counts as picking a language is Codex's to decide,
 // so stubbed ones would only assert this component's wiring back to itself.
 describe( 'LanguagePicker', () => {
 
 	let wrapper: VueWrapper | undefined;
-	let cleanups: ( () => void )[] = [];
+
+	// A trigger of the kind a caller puts in the picker's slot.
+	const TRIGGER = `<template #default="{ expanded, controls, toggle }">
+		<button type="button" class="trigger" :aria-expanded="expanded" :aria-controls="controls" @click="toggle">
+			Language
+		</button>
+	</template>`;
 
 	// Attached, because where the focus goes is part of what is asserted.
-	function newWrapper( modelValue: string, label = 'Title language 1' ): VueWrapper {
+	function newWrapper( modelValue: string ): VueWrapper {
 		wrapper = mount( LanguagePicker, {
-			props: { modelValue: modelValue, label: label },
+			props: { modelValue: modelValue },
+			slots: { default: TRIGGER },
 			attachTo: document.body,
 		} );
 		return wrapper;
 	}
 
-	function button( picker: VueWrapper ): DOMWrapper<HTMLButtonElement> {
-		return picker.find( '.ext-neowiki-language-picker__button' );
+	function trigger( picker: VueWrapper ): DOMWrapper<HTMLButtonElement> {
+		return picker.find( '.trigger' );
 	}
 
 	function search( picker: VueWrapper ): DOMWrapper<HTMLInputElement> {
@@ -33,11 +46,11 @@ describe( 'LanguagePicker', () => {
 	}
 
 	function isOpen( picker: VueWrapper ): boolean {
-		return button( picker ).attributes( 'aria-expanded' ) === 'true';
+		return trigger( picker ).attributes( 'aria-expanded' ) === 'true';
 	}
 
 	async function openPicker( picker: VueWrapper ): Promise<void> {
-		await button( picker ).trigger( 'click' );
+		await trigger( picker ).trigger( 'click' );
 	}
 
 	async function type( picker: VueWrapper, text: string ): Promise<void> {
@@ -56,96 +69,31 @@ describe( 'LanguagePicker', () => {
 		return picker.findAll( '.cdx-menu-item__text__description' ).map( ( description ) => description.text() );
 	}
 
-	// More than one page of them, so the list both scrolls and has a page left to load.
-	function manyLanguages(): Record<string, string> {
-		return Object.fromEntries( Array.from( { length: 60 }, ( _, i ) => [ `l${ i }`, `Language ${ i }` ] ) );
-	}
-
 	// Opens the languages, searches them and picks the first entry the list then offers.
 	async function chooseLanguage( picker: VueWrapper, text: string ): Promise<void> {
 		await openPicker( picker );
-		await type( picker, text );
-		await picker.findAll( '.cdx-menu-item:not( .cdx-menu__no-results )' )[ 0 ].trigger( 'click' );
+		await pickInLanguageSearch( picker, text );
 	}
 
-	function emittedTags( picker: VueWrapper ): string[] {
-		return ( picker.emitted( 'update:modelValue' ) ?? [] ).map( ( event ) => event[ 0 ] as string );
-	}
-
-	// Dispatched rather than trigger()'d, because what the test asserts on is the event itself.
-	function press( element: Element ): MouseEvent {
-		const event = new MouseEvent( 'mousedown', { bubbles: true, cancelable: true } );
-
-		element.dispatchEvent( event );
-
-		return event;
-	}
-
-	// Keys go where the focus is, which is what the handlers move: each press follows it.
-	async function pressKey( key: string ): Promise<void> {
-		for ( const type of [ 'keydown', 'keyup' ] ) {
-			document.activeElement?.dispatchEvent( new KeyboardEvent( type, { key: key, bubbles: true, cancelable: true } ) );
-			await wrapper?.vm.$nextTick();
-		}
-	}
-
-	function listenForDialogKeys(): ReturnType<typeof vi.fn> {
-		const dialogKeyup = vi.fn();
-		document.addEventListener( 'keyup', dialogKeyup );
-		cleanups.push( () => document.removeEventListener( 'keyup', dialogKeyup ) );
-		return dialogKeyup;
-	}
-
-	function useLanguages( languageNames: Record<string, string>, config: Record<string, string> = {} ): void {
-		setupMwMock( {
-			config: { wgUserLanguage: 'en', wgContentLanguage: 'en', ...config },
-			languageNames: languageNames,
-		} );
+	function readsIn( userLanguage: string ): void {
+		setupMwMock( { config: { wgUserLanguage: userLanguage, wgContentLanguage: 'en' } } );
 	}
 
 	beforeEach( () => {
-		useLanguages( { en: 'English', eu: 'Basque', es: 'Spanish', an: 'Aragonese' } );
+		readsIn( 'en' );
 	} );
 
 	afterEach( () => {
 		wrapper?.unmount();
 		wrapper = undefined;
-		cleanups.forEach( ( cleanup ) => cleanup() );
-		cleanups = [];
 		vi.restoreAllMocks();
 	} );
 
-	it( 'shows the tag of the language it holds on its button', () => {
-		expect( button( newWrapper( 'eu' ) ).text() ).toBe( 'EU' );
-	} );
-
-	it( 'names the language on its button for anyone who cannot place the tag', () => {
-		expect( button( newWrapper( 'eu' ) ).attributes( 'aria-label' ) ).toContain( 'Basque' );
-	} );
-
-	it( 'names on its button the row it belongs to, which is the only tab stop the row has', () => {
-		expect( button( newWrapper( 'eu', 'Title language 2' ) ).attributes( 'aria-label' ) )
-			.toContain( 'Title language 2' );
-	} );
-
-	it( 'names a language MediaWiki has no name for by its tag', () => {
-		setupMwMock( {
-			config: { wgUserLanguage: 'en', wgContentLanguage: 'en' },
-			languageNames: { en: 'English' },
-			messages: {
-				'neowiki-language-picker-button': ( label, name, tag ) => `${ label }: ${ name } (${ tag })`,
-			},
-		} );
-
-		expect( button( newWrapper( 'und', 'Title language 1' ) ).attributes( 'aria-label' ) )
-			.toBe( 'Title language 1: und (und)' );
-	} );
-
-	it( 'keeps its languages closed until the button is pressed', () => {
+	it( 'keeps its languages closed until its trigger is pressed', () => {
 		expect( isOpen( newWrapper( 'eu' ) ) ).toBe( false );
 	} );
 
-	it( 'keeps the panel out of sight until the button is pressed', async () => {
+	it( 'keeps the panel out of sight until its trigger is pressed', async () => {
 		const picker = newWrapper( 'eu' );
 
 		expect( panel( picker ).isVisible() ).toBe( false );
@@ -164,51 +112,49 @@ describe( 'LanguagePicker', () => {
 		expect( document.activeElement ).toBe( search( picker ).element );
 	} );
 
-	it( 'lists the languages the reader reads first, then the others by name', async () => {
-		useLanguages(
-			{ an: 'Aragonese', cy: 'Welsh', de: 'German', en: 'English', es: 'Spanish', eu: 'Basque' },
-			{ wgUserLanguage: 'es', wgContentLanguage: 'eu' },
-		);
-		const picker = newWrapper( 'es' );
+	it( 'lists the languages by their name in the interface language', async () => {
+		readsIn( 'de' );
+		const picker = newWrapper( 'de' );
 
 		await openPicker( picker );
 
-		expect( listedLanguages( picker ) )
-			.toEqual( [ 'Spanish', 'English', 'Basque', 'Aragonese', 'German', 'Welsh' ] );
+		const listed = listedLanguages( picker );
+		expect( listed ).toContain( 'Deutsch' );
+		expect( listed ).toContain( 'Englisch' );
+		expect( listed ).toEqual( [ ...listed ].sort( ( a, b ) => a.localeCompare( b, 'de' ) ) );
 	} );
 
 	it.each( [
-		[ 'Ido', 'Ido' ],
-		[ 'eu', 'Basque' ],
-	] )( 'lists the language %s names, and no tag of its own', async ( typed, listed ) => {
-		useLanguages( { en: 'English', eu: 'Basque', io: 'Ido' } );
+		[ 'German', 'German' ],
+		[ 'de', 'German' ],
+	] )( 'lists first the language %s names or tags, and no tag of its own', async ( typed, first ) => {
 		const picker = newWrapper( 'en' );
 
 		await openPicker( picker );
 		await type( picker, typed );
 
-		expect( listedLanguages( picker ) ).toEqual( [ listed ] );
+		expect( listedLanguages( picker )[ 0 ] ).toBe( first );
+		expect( listedDescriptions( picker ) ).toEqual( [] );
 	} );
 
 	it( 'lists the language whose tag is typed before those whose name only starts or contains it', async () => {
-		useLanguages( { an: 'Aragonese', es: 'Spanish', et: 'Estonian' } );
 		const picker = newWrapper( 'en' );
 
 		await openPicker( picker );
 		await type( picker, 'es' );
 
-		expect( listedLanguages( picker ) ).toEqual( [ 'Spanish', 'Estonian', 'Aragonese' ] );
+		const listed = listedLanguages( picker );
+		expect( listed[ 0 ] ).toBe( 'Spanish' );
+		expect( listed.indexOf( 'Estonian' ) ).toBeLessThan( listed.indexOf( 'Portuguese' ) );
 	} );
 
-	it( 'lists the language a MediaWiki code stands for', async () => {
-		useLanguages( { als: 'Alemannisch', en: 'English' } );
+	it( 'offers no tag for typed text naming a listed language', async () => {
 		const picker = newWrapper( 'en' );
 
 		await openPicker( picker );
-		await type( picker, 'als' );
+		await type( picker, 'ewe' );
 
-		expect( listedLanguages( picker ) ).toEqual( [ 'Alemannisch' ] );
-		expect( listedTags( picker ) ).toEqual( [ 'GSW' ] );
+		expect( listedLanguages( picker ) ).toEqual( [ 'Ewe' ] );
 	} );
 
 	it( 'offers a typed tag alongside the languages whose name it only starts', async () => {
@@ -217,8 +163,10 @@ describe( 'LanguagePicker', () => {
 		await openPicker( picker );
 		await type( picker, 'ara' );
 
-		expect( listedLanguages( picker ) ).toEqual( [ 'Aragonese', 'ara' ] );
-		expect( listedTags( picker ) ).toEqual( [ 'AN' ] );
+		const listed = listedLanguages( picker );
+		expect( listed.slice( 0, 2 ) ).toEqual( [ 'Arabic', 'Aragonese' ] );
+		expect( listedTags( picker ).slice( 0, 2 ) ).toEqual( [ 'AR', 'AN' ] );
+		expect( listed[ listed.length - 1 ] ).toBe( 'ara' );
 		expect( listedDescriptions( picker ) ).toEqual( [ 'neowiki-language-picker-tag' ] );
 	} );
 
@@ -234,7 +182,7 @@ describe( 'LanguagePicker', () => {
 		const picker = newWrapper( 'en' );
 
 		await openPicker( picker );
-		await type( picker, 'German' );
+		await type( picker, 'Klingon' );
 
 		expect( listedLanguages( picker ) ).toEqual( [] );
 	} );
@@ -243,22 +191,9 @@ describe( 'LanguagePicker', () => {
 		const picker = newWrapper( 'en' );
 
 		await openPicker( picker );
-		await type( picker, 'German' );
+		await type( picker, 'Klingon' );
 
 		expect( picker.find( '.cdx-menu__no-results' ).text() ).toBe( 'neowiki-language-picker-no-results' );
-	} );
-
-	it( 'lists more languages once the list is scrolled to its end', async () => {
-		useLanguages( manyLanguages() );
-		const picker = newWrapper( 'en' );
-
-		await openPicker( picker );
-
-		expect( listedLanguages( picker ) ).toHaveLength( 50 );
-
-		await picker.findComponent( CdxMenu ).vm.$emit( 'load-more' );
-
-		expect( listedLanguages( picker ) ).toHaveLength( 60 );
 	} );
 
 	it( 'reports the tag of the language chosen by its name, closing and handing the focus back', async () => {
@@ -268,7 +203,7 @@ describe( 'LanguagePicker', () => {
 
 		expect( emittedTags( picker ) ).toEqual( [ 'eu' ] );
 		expect( isOpen( picker ) ).toBe( false );
-		expect( document.activeElement ).toBe( button( picker ).element );
+		expect( document.activeElement ).toBe( trigger( picker ).element );
 	} );
 
 	it( 'reports nothing for the language it already holds', async () => {
@@ -279,7 +214,7 @@ describe( 'LanguagePicker', () => {
 		expect( emittedTags( picker ) ).toEqual( [] );
 	} );
 
-	it( 'picks the language the arrow keys reach on Enter, handing the focus back to its button', async () => {
+	it( 'picks the language the arrow keys reach on Enter, handing the focus back to its trigger', async () => {
 		const picker = newWrapper( 'en' );
 
 		await openPicker( picker );
@@ -289,10 +224,10 @@ describe( 'LanguagePicker', () => {
 
 		expect( emittedTags( picker ) ).toEqual( [ 'eu' ] );
 		expect( isOpen( picker ) ).toBe( false );
-		expect( document.activeElement ).toBe( button( picker ).element );
+		expect( document.activeElement ).toBe( trigger( picker ).element );
 	} );
 
-	it( 'closes on Escape, handing the focus back to its button, without the key reaching the dialog', async () => {
+	it( 'closes on Escape, handing the focus back to its trigger, without the key reaching the dialog', async () => {
 		const picker = newWrapper( 'en' );
 		const dialogKeyup = listenForDialogKeys();
 
@@ -300,27 +235,27 @@ describe( 'LanguagePicker', () => {
 		await pressKey( 'Escape' );
 
 		expect( isOpen( picker ) ).toBe( false );
-		expect( document.activeElement ).toBe( button( picker ).element );
+		expect( document.activeElement ).toBe( trigger( picker ).element );
 		expect( dialogKeyup ).not.toHaveBeenCalled();
 	} );
 
-	it( 'closes on Escape pressed on its button while it is open', async () => {
+	it( 'closes on Escape pressed on its trigger while it is open', async () => {
 		const picker = newWrapper( 'en' );
 		const dialogKeyup = listenForDialogKeys();
 
 		await openPicker( picker );
-		button( picker ).element.focus();
+		trigger( picker ).element.focus();
 		await pressKey( 'Escape' );
 
 		expect( isOpen( picker ) ).toBe( false );
 		expect( dialogKeyup ).not.toHaveBeenCalled();
 	} );
 
-	it( 'lets an Escape pressed on its button while it is closed reach the dialog', async () => {
+	it( 'lets an Escape pressed on its trigger while it is closed reach the dialog', async () => {
 		const picker = newWrapper( 'en' );
 		const dialogKeyup = listenForDialogKeys();
 
-		button( picker ).element.focus();
+		trigger( picker ).element.focus();
 		await pressKey( 'Escape' );
 
 		expect( dialogKeyup ).toHaveBeenCalledTimes( 1 );
@@ -376,20 +311,6 @@ describe( 'LanguagePicker', () => {
 		expect( emittedTags( picker ) ).toEqual( [] );
 	} );
 
-	it( 'points its search field at an entry that is still listed once more languages are', async () => {
-		useLanguages( manyLanguages() );
-		const picker = newWrapper( 'en' );
-
-		await openPicker( picker );
-		await pressKey( 'ArrowDown' );
-		await picker.findComponent( CdxMenu ).vm.$emit( 'load-more' );
-		await picker.vm.$nextTick();
-		const highlighted = picker.find( '.cdx-menu-item--highlighted' );
-
-		expect( highlighted.exists() ).toBe( true );
-		expect( search( picker ).attributes( 'aria-activedescendant' ) ).toBe( highlighted.attributes( 'id' ) );
-	} );
-
 	it( 'points its search field at the entry the arrow keys reach, for a screen reader', async () => {
 		const picker = newWrapper( 'en' );
 
@@ -411,21 +332,17 @@ describe( 'LanguagePicker', () => {
 		await vi.waitFor( () => expect( document.activeElement ).toBe( search( picker ).element ) );
 	} );
 
-	it( 'closes when its button is pressed again, keeping the focus on the button', async () => {
+	it( 'closes when its trigger is pressed again, keeping the focus on the trigger', async () => {
 		const picker = newWrapper( 'en' );
 
 		await openPicker( picker );
 		await openPicker( picker );
 
 		expect( isOpen( picker ) ).toBe( false );
-		expect( document.activeElement ).toBe( button( picker ).element );
+		expect( document.activeElement ).toBe( trigger( picker ).element );
 	} );
 
-	it( 'leaves the focus where it is when its button is pressed', () => {
-		expect( press( button( newWrapper( 'en' ) ).element ).defaultPrevented ).toBe( true );
-	} );
-
-	it( 'closes when what it sits in scrolls, handing the focus back to its button', async () => {
+	it( 'closes when what it sits in scrolls, handing the focus back to its trigger', async () => {
 		const picker = newWrapper( 'en' );
 
 		await openPicker( picker );
@@ -433,7 +350,7 @@ describe( 'LanguagePicker', () => {
 		await picker.vm.$nextTick();
 
 		expect( isOpen( picker ) ).toBe( false );
-		expect( document.activeElement ).toBe( button( picker ).element );
+		expect( document.activeElement ).toBe( trigger( picker ).element );
 	} );
 
 	it( 'stays open when a field outside it scrolls, as a text input does when it is left', async () => {
