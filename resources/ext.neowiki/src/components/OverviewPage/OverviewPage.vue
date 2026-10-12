@@ -14,6 +14,13 @@
 			</CdxButton>
 		</div>
 
+		<CdxMessage
+			v-if="showsFirstSteps"
+			class="ext-neowiki-overview__first-steps"
+		>
+			{{ $i18n( 'neowiki-overview-first-steps' ).text() }}
+		</CdxMessage>
+
 		<div class="ext-neowiki-overview__pages">
 			<CdxCard
 				v-for="link in pageLinks"
@@ -31,7 +38,7 @@
 			</CdxCard>
 		</div>
 
-		<RecentSubjectsTable v-if="subjectListAvailable" />
+		<RecentSubjectsTable v-if="showsRecentSubjects" />
 
 		<SubjectCreatorDialog
 			v-if="canCreateSubjectPage"
@@ -42,8 +49,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
-import { CdxButton, CdxCard, CdxIcon } from '@wikimedia/codex';
+import { computed, onMounted, ref } from 'vue';
+import { CdxButton, CdxCard, CdxIcon, CdxMessage } from '@wikimedia/codex';
 import {
 	cdxIconAdd,
 	cdxIconDatabase,
@@ -105,12 +112,22 @@ const CONFIGURATION_LINK = {
 const props = defineProps<{
 	canManageGraphStores: boolean;
 	canEditConfiguration: boolean;
+	wikiHasSubjects: boolean;
 }>();
 
 const subjectStore = useSubjectStore();
 const { canCreateSubjectPage, checkCreateSubjectPagePermission } = useSubjectPermissions();
 
 const subjectListAvailable = isSubjectListAvailable();
+const permissionKnown = ref( false );
+
+// The note points at the create button, so only those offered the button get it.
+const showsFirstSteps = computed( () => !props.wikiHasSubjects && canCreateSubjectPage.value );
+
+// On a wiki without Subjects the table waits for the permission check, so it never loads for a user who gets the note.
+const showsRecentSubjects = computed(
+	() => subjectListAvailable && ( props.wikiHasSubjects || ( permissionKnown.value && !showsFirstSteps.value ) )
+);
 
 const pageLinks = computed( () => [
 	...( subjectListAvailable ? [ SUBJECTS_LINK ] : [] ),
@@ -123,7 +140,10 @@ function pageUrl( page: string ): string {
 	return mw.util.getUrl( page );
 }
 
-onMounted( checkCreateSubjectPagePermission );
+onMounted( async () => {
+	await checkCreateSubjectPagePermission();
+	permissionKnown.value = true;
+} );
 </script>
 
 <style lang="less">
@@ -134,6 +154,10 @@ onMounted( checkCreateSubjectPagePermission );
 
 	// A block of its own: Codex sets the button's margin to zero after this stylesheet loads.
 	&__actions {
+		margin-bottom: @spacing-150;
+	}
+
+	&__first-steps {
 		margin-bottom: @spacing-150;
 	}
 

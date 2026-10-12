@@ -2,7 +2,7 @@ import { enableAutoUnmount, mount, VueWrapper, flushPromises } from '@vue/test-u
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
-import { CdxButton, CdxCard } from '@wikimedia/codex';
+import { CdxButton, CdxCard, CdxMessage } from '@wikimedia/codex';
 import OverviewPage from '@/components/OverviewPage/OverviewPage.vue';
 import RecentSubjectsTable from '@/components/SubjectsTable/RecentSubjectsTable.vue';
 import SubjectCreatorDialog from '@/components/SubjectCreator/SubjectCreatorDialog.vue';
@@ -38,11 +38,12 @@ let pinia: ReturnType<typeof createPinia>;
 interface OverviewProps {
 	canManageGraphStores: boolean;
 	canEditConfiguration: boolean;
+	wikiHasSubjects: boolean;
 }
 
 function mountPage( offered: Partial<OverviewProps> = {} ): VueWrapper {
 	return mount( OverviewPage, {
-		props: { canManageGraphStores: false, canEditConfiguration: false, ...offered },
+		props: { canManageGraphStores: false, canEditConfiguration: false, wikiHasSubjects: true, ...offered },
 		global: {
 			plugins: [ pinia ],
 			mocks: { $i18n: createI18nMock() },
@@ -54,6 +55,15 @@ function mountPage( offered: Partial<OverviewProps> = {} ): VueWrapper {
 function findCreateSubjectButton( wrapper: VueWrapper ): VueWrapper | undefined {
 	return wrapper.findAllComponents( CdxButton )
 		.find( ( button ) => button.text().includes( 'neowiki-createsubject-button' ) );
+}
+
+function findFirstSteps( wrapper: VueWrapper ): VueWrapper | undefined {
+	return wrapper.findAllComponents( CdxMessage )
+		.find( ( message ) => message.text().includes( 'neowiki-overview-first-steps' ) );
+}
+
+function isShown( component: VueWrapper | undefined ): boolean {
+	return component !== undefined && component.exists() && component.isVisible();
 }
 
 /**
@@ -166,6 +176,60 @@ describe( 'OverviewPage', () => {
 
 		expect( precedes( createButton, map ) ).toBe( true );
 		expect( precedes( map, recentSubjects ) ).toBe( true );
+	} );
+
+	it( 'shows first steps on a wiki without Subjects to a user who may create one', async () => {
+		const wrapper = mountPage( { wikiHasSubjects: false } );
+		await flushPromises();
+
+		expect( isShown( findFirstSteps( wrapper ) ) ).toBe( true );
+	} );
+
+	it( 'shows the first steps between the create button and the map', async () => {
+		const wrapper = mountPage( { wikiHasSubjects: false } );
+		await flushPromises();
+
+		const createButton = findCreateSubjectButton( wrapper )!.element;
+		const firstSteps = findFirstSteps( wrapper )!.element;
+		const map = wrapper.findComponent( CdxCard ).element;
+
+		expect( precedes( createButton, firstSteps ) ).toBe( true );
+		expect( precedes( firstSteps, map ) ).toBe( true );
+	} );
+
+	// Left out rather than hidden: the table loads its Subjects as soon as it is there.
+	it( 'loads no recent Subjects while it shows first steps', async () => {
+		const wrapper = mountPage( { wikiHasSubjects: false } );
+		await flushPromises();
+
+		expect( wrapper.findComponent( RecentSubjectsTable ).exists() ).toBe( false );
+	} );
+
+	it( 'waits for the permission check before loading the recent Subjects of a wiki without any', async () => {
+		checkCreateSubjectPagePermissionMock.mockReturnValueOnce( new Promise( () => {
+			// Never settles.
+		} ) );
+		const wrapper = mountPage( { wikiHasSubjects: false } );
+		await flushPromises();
+
+		expect( wrapper.findComponent( RecentSubjectsTable ).exists() ).toBe( false );
+	} );
+
+	it( 'shows the recent Subjects rather than first steps on a wiki that has some', async () => {
+		const wrapper = mountPage();
+		await flushPromises();
+
+		expect( isShown( wrapper.findComponent( RecentSubjectsTable ) ) ).toBe( true );
+		expect( isShown( findFirstSteps( wrapper ) ) ).toBe( false );
+	} );
+
+	it( 'shows an empty wiki\'s recent Subjects rather than first steps to a user who may not create a subject', async () => {
+		grantedRight = false;
+		const wrapper = mountPage( { wikiHasSubjects: false } );
+		await flushPromises();
+
+		expect( isShown( wrapper.findComponent( RecentSubjectsTable ) ) ).toBe( true );
+		expect( isShown( findFirstSteps( wrapper ) ) ).toBe( false );
 	} );
 
 	it( 'offers no Subject list on a wiki that cannot list Subjects', async () => {

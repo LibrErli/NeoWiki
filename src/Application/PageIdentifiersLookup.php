@@ -27,4 +27,6 @@ interface PageIdentifiersLookup {
 	 */
 	public function getPageIdsOfSubjects( SubjectIdList $subjectIds ): array;
 
+	public function wikiHasSubjects(): bool;
+
 }
