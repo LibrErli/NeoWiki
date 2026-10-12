@@ -13,12 +13,17 @@
 		<EditNoticeList :notices="shownNotices" />
 
 		<SchemaPicker
+			v-if="schemaPermissionKnown"
 			ref="schemaLookupRef"
 			:offers-creation="canCreateSchemas && offeredSchemaNames === undefined"
 			:schema-names="offeredSchemaNames"
 			@select="onSchemaSelected"
 			@create="openSchemaCreator"
-		/>
+		>
+			<template #no-schemas>
+				<p>{{ $i18n( 'neowiki-subject-creator-no-schemas' ).text() }}</p>
+			</template>
+		</SchemaPicker>
 	</CdxDialog>
 
 	<!-- The Subject itself is filled in by the editor, opened on a Subject the wiki does not hold
@@ -632,6 +637,14 @@ watch( () => props.open, ( isOpen ) => {
 const schemaStore = useSchemaStore();
 const schemaRepo = NeoWikiServices.getSchemaRepository();
 const { canCreateSchemas, checkCreatePermission } = useSchemaPermissions();
+
+// The picker is rendered once this answer is in: Codex's lookup decides when it is created whether
+// focus opens its menu, and on a wiki without Schemas the offer to create one is all that menu holds.
+const schemaPermissionKnown = ref( false );
+const schemaPermissionChecked = checkCreatePermission().then( () => {
+	schemaPermissionKnown.value = true;
+} );
+
 const { hasChanged: formChanged, markChanged, resetChanged } = useChangeDetection();
 
 // The page question answered, where it was the user's to answer: a page picked, or a title typed
@@ -665,7 +678,7 @@ function onEditorUpdateOpen( value: boolean ): void {
 }
 
 onMounted( async () => {
-	await Promise.all( [ checkCreatePermission(), checkCreateSubjectPagePermission() ] );
+	await Promise.all( [ schemaPermissionChecked, checkCreateSubjectPagePermission() ] );
 	startPageQuestion();
 
 	// Already open: the open watcher ran before pageChoice existed.
@@ -983,6 +996,7 @@ watch( () => props.open, async ( isOpen ) => {
 		}
 
 		await pinInitialSchema();
+		await schemaPermissionChecked;
 		await nextTick();
 		schemaLookupRef.value?.focus();
 	} else {

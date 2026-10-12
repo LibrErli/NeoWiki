@@ -38,9 +38,10 @@ describe( 'SchemaPicker', () => {
 
 	// Attached to the document so focus lands on the field: jsdom ignores focus() on a
 	// detached element, which would silently skip the menu-opening behaviour.
-	function mountPicker( props: Record<string, unknown> = {} ): VueWrapper {
+	function mountPicker( props: Record<string, unknown> = {}, slots: Record<string, string> = {} ): VueWrapper {
 		const wrapper = mount( SchemaPicker, {
 			props,
+			slots,
 			attachTo: document.body,
 			global: {
 				mocks: { $i18n },
@@ -510,5 +511,61 @@ describe( 'SchemaPicker', () => {
 			expect( field( wrapper ).attributes( 'aria-expanded' ) ).toBe( 'true' );
 			expect( listedSchemas( wrapper ) ).toEqual( [ 'Product', 'Office', 'City' ] );
 		} );
+	} );
+
+	describe( 'what the caller gives it to say for a wiki without schemas', () => {
+		const SAID_INSTEAD = 'Nothing to pick';
+
+		async function mountPickerSaying( props: Record<string, unknown> ): Promise<VueWrapper> {
+			const wrapper = mountPicker( props, { 'no-schemas': `<p>${ SAID_INSTEAD }</p>` } );
+			await flushPromises();
+			return wrapper;
+		}
+
+		function expectFieldShown( wrapper: VueWrapper ): void {
+			expect( field( wrapper ).exists() ).toBe( true );
+			expect( wrapper.text() ).not.toContain( SAID_INSTEAD );
+		}
+
+		it( 'is shown in place of the field where the wiki has none and none is to be created', async () => {
+			schemaStore.fetchAllSchemaSummaries = vi.fn().mockResolvedValue( [] );
+
+			const wrapper = await mountPickerSaying( { offersCreation: false } );
+
+			expect( wrapper.text() ).toContain( SAID_INSTEAD );
+			expect( field( wrapper ).exists() ).toBe( false );
+		} );
+
+		it( 'leaves the field where the wiki has schemas', async () => {
+			const wrapper = await mountPickerSaying( { offersCreation: false } );
+
+			expectFieldShown( wrapper );
+		} );
+
+		it( 'leaves the field where the picker offers to create a schema', async () => {
+			schemaStore.fetchAllSchemaSummaries = vi.fn().mockResolvedValue( [] );
+
+			const wrapper = await mountPickerSaying( { offersCreation: true } );
+
+			expectFieldShown( wrapper );
+		} );
+
+		it( 'leaves the field where the schemas could not be loaded', async () => {
+			const consoleError = vi.spyOn( console, 'error' ).mockImplementation( () => undefined );
+			schemaStore.fetchAllSchemaSummaries = vi.fn().mockRejectedValue( new Error( 'load failed' ) );
+
+			const wrapper = await mountPickerSaying( { offersCreation: false } );
+
+			expectFieldShown( wrapper );
+			consoleError.mockRestore();
+		} );
+	} );
+
+	it( 'shows the field on a wiki without schemas where the caller gives it nothing to say instead', async () => {
+		schemaStore.fetchAllSchemaSummaries = vi.fn().mockResolvedValue( [] );
+		const wrapper = mountPicker();
+		await flushPromises();
+
+		expect( field( wrapper ).exists() ).toBe( true );
 	} );
 } );

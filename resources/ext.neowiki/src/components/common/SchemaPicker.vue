@@ -1,7 +1,11 @@
 <template>
 	<div class="ext-neowiki-schema-picker">
+		<slot
+			v-if="nothingToOffer && $slots[ 'no-schemas' ]"
+			name="no-schemas"
+		/>
 		<CdxLookup
-			v-if="schemasLoaded"
+			v-else-if="schemasLoaded"
 			ref="lookupRef"
 			v-model:selected="selectedSchema"
 			v-model:input-value="inputText"
@@ -42,11 +46,18 @@ const emit = defineEmits<{
 	'create': [ schemaName: string ];
 }>();
 
+defineSlots<{
+	/** Shown in place of the field where the wiki has no Schemas and the picker offers to create none. */
+	'no-schemas'?(): unknown;
+}>();
+
 const schemaStore = useSchemaStore();
 const selectedSchema = ref<string | null>( props.selected ?? null );
 const inputText = ref<string | number>( props.selected ?? '' );
 const summaries = ref<SchemaSummary[]>( [] );
 const schemasLoaded = ref( false );
+// A failed request leaves `summaries` empty too, so only a list that loaded can tell the wiki has none.
+const wikiHasNoSchemas = ref( false );
 const query = ref<string>( '' );
 const lookupRef = ref<InstanceType<typeof CdxLookup> | null>( null );
 
@@ -70,6 +81,8 @@ const offeredSummaries = computed( (): SchemaSummary[] => props.schemaNames === 
 const menu = computed( (): SchemaMenu =>
 	schemaMenu( offeredSummaries.value, query.value, creationOffered.value ? typedName.value : null ) );
 
+const nothingToOffer = computed( (): boolean => wikiHasNoSchemas.value && !props.offersCreation );
+
 // CdxLookup decides whether focus opens the menu from the menu items it was created
 // with, so the field is only rendered once the schemas have arrived. Loading them is
 // also marked done when the request fails, so a failure leaves a usable field rather
@@ -77,6 +90,7 @@ const menu = computed( (): SchemaMenu =>
 async function loadSchemas(): Promise<void> {
 	try {
 		summaries.value = await schemaStore.fetchAllSchemaSummaries();
+		wikiHasNoSchemas.value = summaries.value.length === 0;
 	} catch ( error ) {
 		console.error( 'Failed to load schemas for the picker:', error );
 	}
