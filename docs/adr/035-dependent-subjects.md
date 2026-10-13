@@ -103,11 +103,11 @@ others find it under "Referenced by" on their `Special:Subject` page.
   later without invalidating stored data, while a permissive one cannot be tightened. The cost: a Subject cannot be both
   edited inline and pointed at by others. A wiki that edits rooms inside a building's form, with events that point at
   rooms, has to make the rooms standalone.
-- **Letting a Dependent Subject have several Host Subjects**, such as a Birth shared by the child and the mother: its
-  fields would look like part of the mother's record, yet editing them there would also change the child's. It would
-  live on the child's page, so the mother's editor would save that page too, under that page's history and access
-  rules. And deleting the child's page would delete a Birth the mother still points at, unless where-used
-  ([#1039](https://github.com/ProfessionalWiki/NeoWiki/issues/1039)) catches it.
+- **Letting a Dependent Subject have several Host Subjects**, such as a Birth shared by the child and the mother: with
+  one Host Subject, where the Birth is stored, when it is removed, what it is called and what moving does all follow
+  from that Host Subject and its page. With Host Subjects on several pages, each becomes a question across pages, and
+  removing the Birth with the last of them needs where-used
+  ([#1039](https://github.com/ProfessionalWiki/NeoWiki/issues/1039)).
 - **Refusing to delete a Dependent Subject on its own**: deleting a Subject through the API is never refused.
 - **Storing the Relation on the Dependent Subject**, pointing at its Host Subject as CIDOC-CRM draws a birth: the
   Person's editor would then have to edit Relations that point at the Person, which it cannot do. Stored on the Person,
