@@ -17,6 +17,7 @@
 			ref="schemaLookupRef"
 			:offers-creation="canCreateSchemas && offeredSchemaNames === undefined"
 			:schema-names="offeredSchemaNames"
+			:aria-label="$i18n( 'neowiki-subject-creator-schema-field' ).text()"
 			@select="onSchemaSelected"
 			@create="openSchemaCreator"
 		>
