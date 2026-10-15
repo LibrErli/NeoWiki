@@ -4,7 +4,7 @@ order: 6
 ---
 # Edit notices
 
-Show a message in the Subject editor, the Subject creator and Manage subjects.
+Show a message in the Subject editor and the Subject creator.
 
 ```php
 class ApprovalEditNoticeProvider implements SubjectEditNoticeProvider {

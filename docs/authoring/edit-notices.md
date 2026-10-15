@@ -4,8 +4,8 @@ order: 4
 ---
 # Edit Notices
 
-Interface messages shown to the user in the Subject editor, the Subject creator, and Manage subjects. NeoWiki ships
-none, so nothing appears until you create one.
+Interface messages shown in the Subject editor and the Subject creator. NeoWiki ships no notices, so nothing appears
+until you create one.
 
 ## Add a notice
 

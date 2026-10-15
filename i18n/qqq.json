@@ -60,11 +60,9 @@
 
 	"neowiki-page-tools-label": "Heading for the NeoWiki section in the MediaWiki sidebar (shown as a group label in legacy skins and inside the page tools menu in modern Vector).",
 	"neowiki-page-tools-create-subject": "Label for the link in the NeoWiki section of the sidebar that opens the Subject creator on the page being viewed, with that page preselected. The dialog creates the page's Main Subject if it has none, or another Subject otherwise. Pages that cannot open the creator link to [[Special:CreateSubject]] instead, under {{msg-mw|neowiki-sidebar-create-subject}}, which reads the same.",
-	"neowiki-page-tools-manage-subjects": "Label for the sidebar link to the Subject management page, shown to users who may edit. See neowiki-page-tools-view-subjects for the read-only variant.",
-	"neowiki-page-tools-view-subjects": "Read-only counterpart of neowiki-page-tools-manage-subjects: label for the sidebar link to the Subject management page, shown to users who lack edit permission.",
 	"neowiki-page-tools-edit-json": "Label for the sidebar link that navigates to Special:NeoJson for the current page. Only visible when development UIs are enabled.",
 	"neowiki-page-tools-view-json": "Read-only counterpart of neowiki-page-tools-edit-json: label for the sidebar link to Special:NeoJson, shown to users who lack edit permission. Only visible when development UIs are enabled.",
-	"neowiki-page-tools-rdf": "Label for the sidebar link that opens the current page's RDF export (Turtle serialization of the page's Subjects), served by the per-page RDF REST endpoint. Only shown when the page has NeoWiki Subjects.",
+	"neowiki-page-tools-rdf": "Label for the sidebar link that opens the current page's RDF export (Turtle serialization of the page's Subjects), served by the per-page RDF REST endpoint. Shown on every existing content page.",
 
 	"neowiki-subject-creator-schema-field": "Label of the field in the 'create subject' dialog that picks the Subject's schema. Not shown; read out by screen readers.",
 	"neowiki-subject-creator-no-schemas": "Shown in the 'create subject' dialog in place of the schema field, on a wiki that has no schemas yet, to a user who may not create one.",
@@ -400,7 +398,7 @@
 	"neowiki-managesubjects-delete-confirm-title": "Title of the confirmation dialog shown before deleting a Subject.",
 	"neowiki-managesubjects-delete-confirm-message": "Body of the delete confirmation dialog. $1 is the name the subject is shown under, rendered in bold, which is why it carries no quotation marks.",
 	"neowiki-managesubjects-delete-confirm-button": "Label for the destructive confirm-button in the delete dialog.",
-	"neowiki-managesubjects-delete-success": "Notification confirming a Subject was deleted. Shown immediately after the deletion on the Manage Subjects page, with no page reload.",
+	"neowiki-managesubjects-delete-success": "Notification confirming a Subject was deleted. Shown immediately after the deletion on the Subject management page, with no page reload.",
 	"neowiki-managesubjects-delete-error": "Notification shown when deleting a Subject failed. $1 is the name the subject is shown under: a stored label, or the subject's bracketed identifier, such as \"(s1ab2cd3ef4gh5i)\", for a subject nobody named. Keep the quotation marks around it, because a stored label is arbitrary text and needs delimiting.",
 	"neowiki-managesubjects-load-error": "Notification shown when loading the Subject list for the page failed.",
 	"neowiki-managesubjects-id-label": "Inline label shown before the Subject ID in the footer of an expanded Subject row. Typically short, e.g. \"ID:\".",
