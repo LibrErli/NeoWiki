@@ -143,21 +143,20 @@ class CreateSubjectActionTest extends TestCase {
 	}
 
 	private function registerSelectSchema(): void {
-		$this->registerSelectSchemaOf( new PropertyCore( description: '', required: false, default: null ) );
+		$this->registerSelectSchemaWithStatus( required: false );
 	}
 
-	private function registerSelectSchemaOf( PropertyCore $core ): void {
+	private function registerSelectSchemaWithStatus( bool $required ): void {
 		$this->schemaLookup->updateSchema( TestSchema::build(
 			name: new SchemaName( self::SELECT_SCHEMA_NAME ),
 			description: '',
 			properties: new PropertyDefinitions( [
-				'Status' => new SelectProperty(
-					core: $core,
+				'Status' => TestProperty::buildSelect(
+					required: $required,
 					options: [
 						new SelectOption( id: 'opt_draft', label: 'Draft' ),
 						new SelectOption( id: 'opt_approved', label: 'Approved' ),
 					],
-					multiple: false,
 				),
 			] )
 		) );
@@ -385,24 +384,6 @@ class CreateSubjectActionTest extends TestCase {
 		$this->assertNull( $this->subjectRepository->comments[1] );
 	}
 
-	public function testSelectValueAcceptsOptionId(): void {
-		$this->registerSelectSchema();
-
-		$this->newCreateSubjectAction()->createSubject(
-			new CreateSubjectRequest(
-				pageId: 1,
-				isMainSubject: true,
-				label: 'Some Label',
-				schemaName: self::SELECT_SCHEMA_NAME,
-				statements: [
-					'Status' => [ 'propertyType' => 'select', 'value' => 'opt_draft' ],
-				]
-			)
-		);
-
-		$this->assertSame( [ 'opt_draft' ], $this->getStatusValueForCreatedSubject()->strings );
-	}
-
 	public function testSelectOptionLabelIsStoredAsSent(): void {
 		$this->registerSelectSchema();
 
@@ -422,7 +403,7 @@ class CreateSubjectActionTest extends TestCase {
 	}
 
 	private function registerSchemaWithRequiredStatus(): void {
-		$this->registerSelectSchemaOf( new PropertyCore( description: '', required: true, default: null ) );
+		$this->registerSelectSchemaWithStatus( required: true );
 	}
 
 	public function testCreateProducesEmptyViolationsForCleanInput(): void {
@@ -885,7 +866,6 @@ class CreateSubjectActionTest extends TestCase {
 		$this->assertSame( 'Some Label', $this->presenterSpy->subject?->label );
 		$this->assertSame( self::SELECT_SCHEMA_NAME, $this->presenterSpy->subject?->schema );
 		$this->assertSame(
-			// The bare string the request supplied is stored as a list.
 			[ 'Status' => [ 'propertyType' => 'select', 'value' => [ 'opt_approved' ] ] ],
 			$this->presenterSpy->subject?->statements
 		);

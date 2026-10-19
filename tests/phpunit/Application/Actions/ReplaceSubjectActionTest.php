@@ -236,30 +236,28 @@ class ReplaceSubjectActionTest extends TestCase {
 	}
 
 	private function registerSchemaWithSelect(): void {
-		$this->registerSchemaWithSelectOf( new PropertyCore( description: '', required: false, default: null ) );
+		$this->registerSchemaWithSelectStatus( required: false, constraintSeverities: [] );
 	}
 
 	private function registerSchemaWithSelectWhoseOptionsAreAnError(): void {
-		$this->registerSchemaWithSelectOf( new PropertyCore(
-			description: '',
-			required: false,
-			default: null,
-			constraintSeverities: [ 'options' => Severity::Error ],
-		) );
+		$this->registerSchemaWithSelectStatus( required: false, constraintSeverities: [ 'options' => Severity::Error ] );
 	}
 
-	private function registerSchemaWithSelectOf( PropertyCore $core ): void {
+	/**
+	 * @param array<string, Severity> $constraintSeverities
+	 */
+	private function registerSchemaWithSelectStatus( bool $required, array $constraintSeverities ): void {
 		$this->schemaLookup->updateSchema( TestSchema::build(
 			name: new SchemaName( self::SCHEMA_NAME ),
 			description: '',
 			properties: new PropertyDefinitions( [
-				'Status' => new SelectProperty(
-					core: $core,
+				'Status' => TestProperty::buildSelect(
+					required: $required,
 					options: [
 						new SelectOption( id: 'opt_draft', label: 'Draft' ),
 						new SelectOption( id: 'opt_approved', label: 'Approved' ),
 					],
-					multiple: false,
+					constraintSeverities: $constraintSeverities,
 				),
 			] )
 		) );
@@ -546,7 +544,7 @@ class ReplaceSubjectActionTest extends TestCase {
 	}
 
 	private function registerSchemaWithRequiredStatus(): void {
-		$this->registerSchemaWithSelectOf( new PropertyCore( description: '', required: true, default: null ) );
+		$this->registerSchemaWithSelectStatus( required: true, constraintSeverities: [] );
 	}
 
 	public function testReplacePresentsViolationForRequiredPropertyMissing(): void {
@@ -591,7 +589,6 @@ class ReplaceSubjectActionTest extends TestCase {
 		$this->assertFalse( $this->presenterSpy->subject?->displayNameIsGenerated );
 		$this->assertSame( self::SCHEMA_NAME, $this->presenterSpy->subject?->schema );
 		$this->assertSame(
-			// The bare string the request supplied is stored as a list.
 			[ 'Status' => [ 'propertyType' => 'select', 'value' => [ 'opt_approved' ] ] ],
 			$this->presenterSpy->subject?->statements
 		);
