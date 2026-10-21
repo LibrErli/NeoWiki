@@ -1,0 +1,15 @@
+/**
+ * Codex: lays the footer item it pins to the bottom of a menu, such as the create offer below a Schema
+ *   lookup's Schemas, over the list without a background, so the list shows through.
+ * Remove when: the Codex of the oldest MediaWiki NeoWiki supports gives that item a background; not yet in
+ *   Codex 2.7.0.
+ *
+ * Inside `:where()` the selector adds nothing to the scope's specificity, so Codex's hover, active and
+ * selected backgrounds still win.
+ */
+
+@import ( reference ) '@wikimedia/codex-design-tokens/theme-wikimedia-ui.less';
+
+:is( .ext-neowiki-ui, .ext-neowiki-view ) :where( .cdx-menu--has-footer .cdx-menu-item:last-of-type ) {
+	background-color: @background-color-base;
+}

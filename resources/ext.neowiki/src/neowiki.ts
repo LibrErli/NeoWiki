@@ -1,9 +1,11 @@
 import { createMwApp } from 'vue';
 import type { App } from 'vue';
 import type { Pinia } from 'pinia';
-// Global, scoped Codex overrides; see the file headers for the rationale.
-import '@/assets/keyboard-focus.less';
-import '@/assets/menu-footer.less';
+import '@/codex/button-focus.less';
+import '@/codex/menu-button-focus.less';
+import '@/codex/accordion-focus.less';
+import '@/codex/menu-footer.less';
+import { keepMenuEscapesFromDialogs } from '@/codex/menuEscape.ts';
 import NeoWikiApp from '@/components/NeoWikiApp.vue';
 import { CdxTooltip } from '@wikimedia/codex';
 import { NeoWikiServices } from '@/NeoWikiServices.ts';
@@ -50,10 +52,12 @@ export function registerSubjectCreatorClickHandler( pinia: Pinia, signal?: Abort
 }
 
 /**
- * Mounts a NeoWiki Vue app, tagging its root element with `ext-neowiki-ui` so
- * the Codex overrides in assets/ (keyboard-focus.less, menu-footer.less) apply to
- * our Codex components without touching those of MediaWiki core or other extensions.
- * Dialogs teleport out of this root and carry the class on the CdxDialog itself.
+ * Mounts a NeoWiki Vue app, tagging its root element with `ext-neowiki-ui`, the scope of the Codex
+ * workarounds in codex/: they apply to the Codex controls NeoWiki renders without touching those of
+ * MediaWiki core or other extensions. Each CdxDialog NeoWiki opens carries the class itself, since
+ * Codex teleports dialogs out of this root, and so do SubjectEditor and LanguageInput, which other
+ * extensions can render in dialogs of their own; `ext-neowiki-view` marks the on-page view placeholder.
+ * Focusable Codex UI NeoWiki renders must sit inside one of these.
  */
 function mountNeoWikiApp( app: App, element: Element ): void {
 	element.classList.add( 'ext-neowiki-ui' );
@@ -338,6 +342,7 @@ const isTestEnvironment = typeof window !== 'undefined' &&
 	( window as unknown as { neoWikiTestMode?: boolean } ).neoWikiTestMode === true;
 
 if ( !isTestEnvironment ) {
+	keepMenuEscapesFromDialogs();
 	fireRegistrationHook();
 	initializeNeoWikiApp();
 	initializeSchemaView();

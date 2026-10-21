@@ -89,6 +89,20 @@ module.exports = {
 	overrides: [
 		{
 			files: [
+				'src/codex/**/*.ts',
+				'src/codex/**/*.vue'
+			],
+			rules: {
+				'no-restricted-imports': [ 'error', {
+					patterns: [ {
+						group: [ '@/*', '!@/codex', '../*' ],
+						message: 'src/codex/ holds Codex workarounds, each to go on its own once Codex changes, so it imports no NeoWiki code.'
+					} ]
+				} ]
+			}
+		},
+		{
+			files: [
 				'src/infrastructure/**/*.ts',
 				'src/persistence/*.ts'
 			],
