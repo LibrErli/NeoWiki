@@ -5,7 +5,7 @@ order: 10
 
 # MCP
 
-AI agents connect to NeoWiki through the
+AI agents can connect to NeoWiki through the
 [MediaWiki MCP Server](https://github.com/ProfessionalWiki/MediaWiki-MCP-Server). On a wiki with NeoWiki installed,
 it offers tools to read Schemas, find and read Subjects, run read-only [Cypher queries](query-api.md), and validate,
 create, change, and delete Subjects, besides its tools for wiki pages. Its README covers installation, sign-in, and
