@@ -178,7 +178,7 @@ class NeoWikiHooks {
 
 	/**
 	 * A wiki with no graph backend is a supported configuration: Subjects, Schemas, Views and the value
-	 * accessors all work without one, and only the query surfaces a backend brings are absent. Half a
+	 * accessors all work without one, and only the query surfaces a backend brings are unavailable. Half a
 	 * Neo4j configuration is not a configuration, though — it reads as a backend that was meant to be
 	 * there, so it is still reported.
 	 */
@@ -547,8 +547,19 @@ class NeoWikiHooks {
 	}
 
 	public static function onParserFirstCallInit( Parser $parser ): void {
-		NeoWikiExtension::getInstance()->getNeo4jPlugin()?->registerParserFunctions( $parser );
-		NeoWikiExtension::getInstance()->getFirstSparqlPlugin()?->registerParserFunctions( $parser );
+		$neo4jPlugin = NeoWikiExtension::getInstance()->getNeo4jPlugin();
+		if ( $neo4jPlugin === null ) {
+			self::registerUnconfiguredQueryFunction( $parser, 'cypher_raw', 'neowiki-cypher-raw-error-not-configured' );
+		} else {
+			$neo4jPlugin->registerParserFunctions( $parser );
+		}
+
+		$sparqlPlugin = NeoWikiExtension::getInstance()->getFirstSparqlPlugin();
+		if ( $sparqlPlugin === null ) {
+			self::registerUnconfiguredQueryFunction( $parser, 'sparql_raw', 'neowiki-sparql-raw-error-not-configured' );
+		} else {
+			$sparqlPlugin->registerParserFunctions( $parser );
+		}
 
 		$parser->setFunctionHook(
 			'view',
@@ -587,6 +598,21 @@ class NeoWikiHooks {
 				);
 				return $parserFunction->handle( $parser, ...$args );
 			}
+		);
+	}
+
+	/**
+	 * An unregistered parser function renders as its own wikitext, which looks broken instead of saying the
+	 * wiki lacks the Graph Store.
+	 */
+	private static function registerUnconfiguredQueryFunction( Parser $parser, string $name, string $messageKey ): void {
+		$parser->setFunctionHook(
+			$name,
+			static fn ( Parser $parser ): array => [
+				'<div class="error">' . $parser->msg( $messageKey )->escaped() . '</div>',
+				'noparse' => true,
+				'isHTML' => true,
+			]
 		);
 	}
 

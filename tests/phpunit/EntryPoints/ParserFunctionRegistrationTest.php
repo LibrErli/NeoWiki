@@ -6,7 +6,6 @@ namespace ProfessionalWiki\NeoWiki\Tests\EntryPoints;
 
 use MediaWiki\Parser\Parser;
 use ProfessionalWiki\NeoWiki\EntryPoints\NeoWikiHooks;
-use ProfessionalWiki\NeoWiki\NeoWikiExtension;
 use ProfessionalWiki\NeoWiki\Tests\NeoWikiIntegrationTestCase;
 
 /**
@@ -15,24 +14,12 @@ use ProfessionalWiki\NeoWiki\Tests\NeoWikiIntegrationTestCase;
  */
 class ParserFunctionRegistrationTest extends NeoWikiIntegrationTestCase {
 
-	public function testCypherRawRegisteredWhenConfigured(): void {
-		$parser = $this->recordingParser( $names );
-
-		NeoWikiHooks::onParserFirstCallInit( $parser );
-
-		$this->assertContains( 'cypher_raw', $names );
-		$this->assertContains( 'view', $names );
-		$this->assertContains( 'neowiki_value', $names );
-		$this->assertContains( 'create_subject', $names );
-	}
-
-	public function testCypherRawNotRegisteredWithoutBackend(): void {
+	public function testFunctionsNeedingNoGraphStoreRegisterWithoutOne(): void {
 		$this->runWithoutGraphBackend( function (): void {
 			$parser = $this->recordingParser( $names );
 
 			NeoWikiHooks::onParserFirstCallInit( $parser );
 
-			$this->assertNotContains( 'cypher_raw', $names );
 			$this->assertContains( 'view', $names );
 			$this->assertContains( 'neowiki_value', $names );
 			$this->assertContains( 'create_subject', $names );
