@@ -421,19 +421,15 @@ class JsonSchemaMatchesValidatorTest extends TestCase {
 			self::value( 'monolingualText', [ self::textIn( 'Zinema', 'eu' ), self::textIn( 'Cine', 'es' ) ] ),
 		];
 
-		$unique = $monolingual + [ 'uniqueItems' => true ];
-		yield 'the same monolingual text twice where uniqueItems is set' => [
-			$unique,
+		yield 'two monolingual texts in one language where uniqueLanguages is set' => [
+			$monolingual + [ 'uniqueLanguages' => true ],
+			self::value( 'monolingualText', [ self::textIn( 'Cine', 'es' ), self::textIn( 'Película', 'es' ) ] ),
+			'the document cannot limit each language to one value.',
+		];
+
+		yield 'the same monolingual text twice' => [
+			$monolingual,
 			self::value( 'monolingualText', [ self::textIn( 'Kino', 'de' ), self::textIn( 'Kino', 'de' ) ] ),
-		];
-		yield 'the same text in two languages where uniqueItems is set' => [
-			$unique,
-			self::value( 'monolingualText', [ self::textIn( 'Kino', 'de' ), self::textIn( 'Kino', 'nl' ) ] ),
-		];
-		yield 'the same monolingual text with its language tag in two cases where uniqueItems is set' => [
-			$unique,
-			self::value( 'monolingualText', [ self::textIn( 'Kino', 'de' ), self::textIn( 'Kino', 'DE' ) ] ),
-			'the wiki lowercases a language tag before it compares parts; the document compares them as written.',
 		];
 	}
 

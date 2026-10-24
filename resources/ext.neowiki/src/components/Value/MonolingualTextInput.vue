@@ -248,7 +248,8 @@ function rowStays( index: number ): boolean {
 
 /**
  * A language the user picked stands as this row's language. A row holding no text is no part of
- * the Value, so changing its language changes nothing the parent could save.
+ * the Value, so changing its language changes nothing the parent could save. Where each language
+ * takes one value, the change can settle or raise a violation on another row, so all are dropped.
  */
 function commitLanguage( index: number, tag: string ): void {
 	const row = rows.value[ index ];
@@ -256,7 +257,7 @@ function commitLanguage( index: number, tag: string ): void {
 	row.language = tag;
 
 	if ( holdsPart( row ) ) {
-		emitClears( clearScopeOf( index ) );
+		emitClears( props.property.uniqueLanguages ? 'all' : clearScopeOf( index ) );
 		emitValue();
 	}
 }
@@ -302,7 +303,7 @@ const rowViews = computed<RowView[]>( () => {
 } );
 
 /**
- * A server violation with no part to attach to (`required`, `unique`) is shown under the whole
+ * A server violation with no part to attach to, such as `required`, is shown under the whole
  * field. On a single-valued property the field is also where the one part's violation goes, there
  * being no row of its own to put it under.
  */

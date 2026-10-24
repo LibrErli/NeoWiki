@@ -9,7 +9,6 @@ use ProfessionalWiki\NeoWiki\Domain\Schema\Property\MonolingualTextProperty;
 use ProfessionalWiki\NeoWiki\Domain\Schema\PropertyCore;
 use ProfessionalWiki\NeoWiki\Domain\Schema\PropertyDefinition;
 use ProfessionalWiki\NeoWiki\Domain\Validation\Violation;
-use ProfessionalWiki\NeoWiki\Domain\Value\MonolingualText;
 use ProfessionalWiki\NeoWiki\Domain\Value\MonolingualTextValue;
 use ProfessionalWiki\NeoWiki\Domain\Value\NeoValue;
 use ProfessionalWiki\NeoWiki\Domain\Value\ValueType;
@@ -54,16 +53,16 @@ class MonolingualTextType implements PropertyType {
 
 		$violations = array_merge( $violations, $this->validateLengths( $value, $definition ) );
 
-		if ( $definition->enforcesUniqueValues() && $this->hasDuplicateParts( $value ) ) {
-			$violations[] = new Violation( propertyName: null, code: 'unique', severity: $definition->severityOf( 'uniqueItems' ) );
-		}
-
 		if ( !$definition->allowsMultipleValues() && count( $value->parts ) > 1 ) {
 			$violations[] = new Violation(
 				propertyName: null,
 				code: 'single-value-only',
 				severity: $definition->severityOf( 'multiple' ),
 			);
+		}
+
+		if ( $definition->allowsMultipleValues() && $definition->enforcesUniqueLanguages() ) {
+			$violations = array_merge( $violations, $this->validateUniqueLanguages( $value, $definition ) );
 		}
 
 		return $violations;
@@ -107,15 +106,26 @@ class MonolingualTextType implements PropertyType {
 	}
 
 	/**
-	 * The same text in two languages is not a duplicate, so uniqueness compares the pair.
+	 * @return Violation[]
 	 */
-	private function hasDuplicateParts( MonolingualTextValue $value ): bool {
-		$pairs = array_map(
-			static fn ( MonolingualText $part ): string => $part->language . "\n" . $part->text,
-			$value->parts
-		);
+	private function validateUniqueLanguages( MonolingualTextValue $value, MonolingualTextProperty $definition ): array {
+		$violations = [];
+		$seenLanguages = [];
 
-		return count( array_unique( $pairs ) ) !== count( $pairs );
+		foreach ( $value->parts as $index => $part ) {
+			if ( isset( $seenLanguages[$part->language] ) ) {
+				$violations[] = new Violation(
+					propertyName: null,
+					code: 'single-value-per-language',
+					valuePartIndex: $index,
+					severity: $definition->severityOf( 'uniqueLanguages' ),
+				);
+			}
+
+			$seenLanguages[$part->language] = true;
+		}
+
+		return $violations;
 	}
 
 	public function searchText( NeoValue $value, ?PropertyDefinition $definition ): array {
