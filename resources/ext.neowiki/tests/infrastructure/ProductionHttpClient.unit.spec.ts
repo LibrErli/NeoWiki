@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { ProductionHttpClient } from '@/infrastructure/HttpClient/ProductionHttpClient';
 import { productionClientAnswering } from './productionClientAnswering.ts';
@@ -45,34 +46,87 @@ describe( 'ProductionHttpClient', () => {
 
 describe( 'ProductionHttpClient request bodies', () => {
 
-	const methods = [ 'post', 'put', 'patch' ] as const;
+	const url = '/rest.php/neowiki';
 
-	it.each( methods )( 'sends fields named after Object members in a %s body', async ( method ) => {
+	const bodySenders: Record<string, BodySender> = {
+		post: ( client, body ) => client.post( url, body ),
+		put: ( client, body ) => client.put( url, body ),
+		patch: ( client, body ) => client.patch( url, body ),
+		delete: ( client, body ) => client.delete( url, { data: body } ),
+	};
+
+	it.each( Object.entries( bodySenders ) )( 'sends fields named after Object members in a %s body', async ( _, send ) => {
 		const body = { statements: { constructor: 'a', prototype: 'b', [ '__proto__' ]: 'c' } };
 
-		const request = await requestSentBy( method, body );
+		const request = await requestSentBy( send, body );
 
-		expect( request.body ).toEqual( body );
+		expect( JSON.parse( request.body ) ).toEqual( body );
 	} );
 
-	it.each( methods )( 'labels a %s body as JSON', async ( method ) => {
-		const request = await requestSentBy( method, { label: 'Berlin' } );
+	it( 'sends fields named after Object members in a body made in another realm', async () => {
+		const body = runInNewContext( '( { statements: { constructor: "a", prototype: "b", [ "__proto__" ]: "c" } } )' );
 
-		expect( request.contentType ).toBe( 'application/json' );
+		const request = await requestSentBy( bodySenders.post, body );
+
+		expect( JSON.parse( request.body ) ).toEqual( { statements: { constructor: 'a', prototype: 'b', [ '__proto__' ]: 'c' } } );
+	} );
+
+	it( 'sends fields named after Object members in a body the caller labels JSON', async () => {
+		const body = { statements: { constructor: 'a', prototype: 'b', [ '__proto__' ]: 'c' } };
+
+		const request = await requestSentBy(
+			( client ) => client.post( url, body, { headers: { 'Content-Type': 'application/json' } } ),
+			body,
+		);
+
+		expect( JSON.parse( request.body ) ).toEqual( body );
+	} );
+
+	it.each( Object.entries( bodySenders ) )( 'labels a %s body as JSON', async ( _, send ) => {
+		const request = await requestSentBy( send, { label: 'Berlin' } );
+
+		expect( request.contentType ).toMatch( /^application\/json/ );
+	} );
+
+	it( 'keeps the JSON type the caller labels a body with', async () => {
+		const request = await requestSentBy(
+			( client, body ) => client.patch( url, body, { headers: { 'Content-Type': 'application/merge-patch+json' } } ),
+			{ label: 'Berlin' },
+		);
+
+		expect( request.contentType ).toMatch( /^application\/merge-patch\+json/ );
+	} );
+
+	it( 'sends a form body as form data', async () => {
+		const request = await requestSentBy( bodySenders.post, new URLSearchParams( 'label=Berlin' ) );
+
+		expect( request.body ).toBe( 'label=Berlin' );
+		expect( request.contentType ).toMatch( /^application\/x-www-form-urlencoded/ );
+	} );
+
+	it( 'sends a plain-object body as form data when the caller labels it so', async () => {
+		const request = await requestSentBy(
+			( client, body ) => client.post( url, body, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } } ),
+			{ label: 'Berlin' },
+		);
+
+		expect( request.body ).toBe( 'label=Berlin' );
 	} );
 
 } );
 
+type BodySender = ( client: ProductionHttpClient, body: any ) => Promise<unknown>;
+
 async function requestSentBy(
-	method: 'post' | 'put' | 'patch',
-	body: Record<string, unknown>,
-): Promise<{ body: unknown; contentType: string }> {
+	send: BodySender,
+	body: unknown,
+): Promise<{ body: string; contentType: string }> {
 	let sent: any;
 	const client = productionClientAnswering( 200, {}, ( config ) => {
 		sent = config;
 	} );
 
-	await client[ method ]( '/rest.php/neowiki', body );
+	await send( client, body );
 
-	return { body: JSON.parse( sent.data ), contentType: sent.headers.getContentType() };
+	return { body: sent.data, contentType: sent.headers.getContentType() };
 }

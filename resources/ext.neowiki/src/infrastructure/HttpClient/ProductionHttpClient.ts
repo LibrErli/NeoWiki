@@ -1,4 +1,4 @@
-import axios, { Axios } from 'axios';
+import axios, { Axios, AxiosHeaders } from 'axios';
 import type { HttpClient } from '@/infrastructure/HttpClient/HttpClient';
 
 export class ProductionHttpClient implements HttpClient {
@@ -13,50 +13,31 @@ export class ProductionHttpClient implements HttpClient {
 		this.axiosInstance = axios.create( {
 			validateStatus: ( status: number ) =>
 				status === 422 || status === 409 || ( status >= 200 && status < 300 ),
-			// axios labels the string bodies of jsonBody() as form data unless told otherwise.
-			headers: {
-				post: { 'Content-Type': 'application/json' },
-				put: { 'Content-Type': 'application/json' },
-				patch: { 'Content-Type': 'application/json' },
-			},
 		} );
 	}
 
 	public async get( url: string, config?: Record<string, any> ): Promise<Response> {
-		const response = await this.axiosInstance.get( url, config );
-		// Convert Axios response to fetch-like Response
-		return new Response( JSON.stringify( response.data ), {
-			status: response.status,
-			statusText: response.statusText,
-		} );
+		return this.send( { ...config, method: 'get', url } );
 	}
 
 	public async post( url: string, data?: Record<string, any>, config?: Record<string, any> ): Promise<Response> {
-		const response = await this.axiosInstance.post( url, jsonBody( data ), config );
-		return new Response( JSON.stringify( response.data ), {
-			status: response.status,
-			statusText: response.statusText,
-		} );
+		return this.send( { ...config, method: 'post', url, data } );
 	}
 
 	public async patch( url: string, data?: Record<string, any>, config?: Record<string, any> ): Promise<Response> {
-		const response = await this.axiosInstance.patch( url, jsonBody( data ), config );
-		return new Response( JSON.stringify( response.data ), {
-			status: response.status,
-			statusText: response.statusText,
-		} );
+		return this.send( { ...config, method: 'patch', url, data } );
 	}
 
 	public async put( url: string, data?: Record<string, any>, config?: Record<string, any> ): Promise<Response> {
-		const response = await this.axiosInstance.put( url, jsonBody( data ), config );
-		return new Response( JSON.stringify( response.data ), {
-			status: response.status,
-			statusText: response.statusText,
-		} );
+		return this.send( { ...config, method: 'put', url, data } );
 	}
 
 	public async delete( url: string, config?: Record<string, any> ): Promise<Response> {
-		const response = await this.axiosInstance.delete( url, config );
+		return this.send( { ...config, method: 'delete', url } );
+	}
+
+	private async send( config: Record<string, any> ): Promise<Response> {
+		const response = await this.axiosInstance.request( withJsonBody( config ) );
 		return new Response( JSON.stringify( response.data ), {
 			status: response.status,
 			statusText: response.statusText,
@@ -68,8 +49,33 @@ export class ProductionHttpClient implements HttpClient {
 	}
 }
 
-// axios copies an object body key by key, at every depth, and the copy skips the keys __proto__,
-// constructor and prototype, which can be Property names. A string body is sent as it is.
-function jsonBody( data?: Record<string, any> ): string | undefined {
-	return data === undefined ? undefined : JSON.stringify( data );
+// axios copies a plain-object body key by key, recursing into nested objects but not arrays, and skips the
+// keys __proto__, constructor and prototype, which can be Property names. It sends a string body unchanged,
+// but does not label it JSON.
+function withJsonBody( config: Record<string, any> ): Record<string, any> {
+	if ( isPlainObject( config.data ) && asksForJson( config.headers ) ) {
+		return {
+			...config,
+			data: JSON.stringify( config.data ),
+			headers: { 'Content-Type': 'application/json', ...config.headers },
+		};
+	}
+
+	return config;
+}
+
+// The objects axios copies: those with no prototype, and those whose prototype is the Object.prototype of any
+// realm, such as an iframe's, which has none itself.
+function isPlainObject( value: unknown ): boolean {
+	if ( typeof value !== 'object' || value === null ) {
+		return false;
+	}
+
+	const prototype = Object.getPrototypeOf( value );
+	return prototype === null || Object.getPrototypeOf( prototype ) === null;
+}
+
+function asksForJson( headers: unknown ): boolean {
+	const contentType = AxiosHeaders.from( headers as AxiosHeaders ).getContentType();
+	return !contentType || String( contentType ).includes( 'json' );
 }
