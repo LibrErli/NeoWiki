@@ -5,7 +5,13 @@ import DateTimeAttributesEditor from '@/components/SchemaEditor/Property/DateTim
 import SeverityInput from '@/components/SchemaEditor/Property/SeverityInput.vue';
 import { newDateTimeProperty, DateTimeProperty } from '@/domain/propertyTypes/DateTime';
 import { AttributesEditorProps } from '@/components/SchemaEditor/Property/AttributesEditorContract.ts';
-import { createTestWrapper, FieldProps, setupMwMock } from '../../../VueTestHelpers.ts';
+import {
+	createTestWrapper,
+	FieldProps,
+	reportPartlyClearedDate,
+	setupMwMock,
+	unparseableAttributeMessage,
+} from '../../../VueTestHelpers.ts';
 
 describe( 'DateTimeAttributesEditor', () => {
 	beforeEach( () => {
@@ -217,6 +223,50 @@ describe( 'DateTimeAttributesEditor', () => {
 			expect( wrapper.emitted( 'update:property' ) ).toEqual( [
 				[ { constraintSeverities: { maximum: 'error', minimum: 'error' } } ],
 			] );
+		} );
+	} );
+
+	// Any report counts as an edit, which enables the save.
+	describe( 'Clearing a date and time part by part', () => {
+		const bounds = [
+			[ 'minimum', '.datetime-attributes__minimum', newDateTimeProperty( { minimum: '2020-01-01T00:00:00Z' } ) ],
+			[ 'maximum', '.datetime-attributes__maximum', newDateTimeProperty( { maximum: '2030-12-31T23:59:59Z' } ) ],
+		] as const;
+
+		it.each( bounds )( 'reports nothing for the %s while some parts remain', async ( _, field, property ) => {
+			const wrapper = newWrapper( { property } );
+
+			await reportPartlyClearedDate( wrapper.find( `${ field } input` ) );
+
+			expect( wrapper.emitted( 'update:property' ) ).toBeUndefined();
+		} );
+
+		it.each( bounds )( 'shows that it cannot read the %s while some parts remain', async ( _, field, property ) => {
+			const wrapper = newWrapper( { property } );
+
+			await reportPartlyClearedDate( wrapper.find( `${ field } input` ) );
+
+			expect( ( wrapper.findComponent( field ) as VueWrapper ).props() ).toMatchObject( {
+				status: 'error',
+				messages: { error: 'neowiki-field-invalid-datetime' },
+			} );
+		} );
+
+		it( 'shows that it cannot read the minimum in place of a range error', async () => {
+			const wrapper = newWrapper( { property: newDateTimeProperty( { maximum: '2020-01-01T00:00:00Z' } ) } );
+			await getInputs( wrapper )[ 0 ].setValue( '2030-01-01T00:00' );
+
+			await reportPartlyClearedDate( getInputs( wrapper )[ 0 ] );
+
+			expect( getMinimumFieldProps( wrapper ).messages ).toEqual( { error: 'neowiki-field-invalid-datetime' } );
+		} );
+
+		it.each( bounds )( 'holds the save while some parts of the %s remain', async ( _, field, property ) => {
+			const wrapper = newWrapper( { property } );
+
+			await reportPartlyClearedDate( wrapper.find( `${ field } input` ) );
+
+			expect( unparseableAttributeMessage( wrapper ) ).toBe( 'neowiki-field-invalid-datetime' );
 		} );
 	} );
 } );

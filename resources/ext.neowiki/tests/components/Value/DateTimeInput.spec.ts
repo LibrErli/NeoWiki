@@ -6,7 +6,7 @@ import { newStringValue, StringValue, ValueType } from '@/domain/Value';
 import DateTimeInput from '@/components/Value/DateTimeInput.vue';
 import { newDateTimeProperty, DateTimeProperty } from '@/domain/propertyTypes/DateTime';
 import { ValueInputExposes, ValueInputProps } from '@/components/Value/ValueInputContract.ts';
-import { createTestWrapper } from '../../VueTestHelpers.ts';
+import { createTestWrapper, reportPartlyClearedDate } from '../../VueTestHelpers.ts';
 import { toLocalInputValue } from '@/domain/propertyTypes/dateTimeConversion';
 
 describe( 'DateTimeInput', () => {
@@ -236,6 +236,41 @@ describe( 'DateTimeInput', () => {
 			const minCall = findMessageCall( 'neowiki-field-min-value' );
 			expect( minCall?.[ 1 ] ).not.toBe( minimum );
 			expect( minCall?.[ 1 ] ).not.toMatch( /Z$/ );
+		} );
+	} );
+
+	// Any report counts as an edit, which enables the save.
+	describe( 'Clearing the date and time part by part', () => {
+		const dateTime = newStringValue( '2025-06-15T14:00:00.000Z' );
+
+		it( 'reports nothing while some parts remain', async () => {
+			const wrapper = newWrapper( { modelValue: dateTime } );
+
+			await reportPartlyClearedDate( wrapper.find( 'input' ) );
+
+			expect( wrapper.emitted( 'update:modelValue' ) ).toBeUndefined();
+		} );
+
+		it( 'shows that it cannot read the date and time while some parts remain', async () => {
+			const wrapper = newWrapper( { modelValue: dateTime } );
+
+			await reportPartlyClearedDate( wrapper.find( 'input' ) );
+
+			expect( wrapper.findComponent( CdxField ).props() ).toMatchObject( {
+				status: 'error',
+				messages: { error: 'neowiki-field-invalid-datetime' },
+			} );
+		} );
+
+		it( 'returns the last date and time it could read as the current value while some parts remain', async () => {
+			const wrapper = newWrapper( { modelValue: dateTime } );
+			const local = '2030-03-20T09:15';
+			await wrapper.find( 'input' ).setValue( local );
+
+			await reportPartlyClearedDate( wrapper.find( 'input' ) );
+
+			expect( ( wrapper.vm as unknown as ValueInputExposes ).getCurrentValue() )
+				.toEqual( newStringValue( new Date( local ).toISOString() ) );
 		} );
 	} );
 } );

@@ -6,16 +6,29 @@ import { newRelationProperty } from '@/domain/propertyTypes/Relation';
 import { CdxCheckbox, CdxSelect } from '@wikimedia/codex';
 import PropertyDefinitionEditor, { type PropertyDefinitionEditorExposes } from '@/components/SchemaEditor/PropertyDefinitionEditor.vue';
 import NumberInput from '@/components/Value/NumberInput.vue';
+import DateInput from '@/components/Value/DateInput.vue';
+import DateTimeInput from '@/components/Value/DateTimeInput.vue';
 import { newTextProperty, TextProperty } from '@/domain/propertyTypes/Text';
 import { newNumberProperty } from '@/domain/propertyTypes/Number';
+import { newDateProperty } from '@/domain/propertyTypes/Date';
+import { newDateTimeProperty } from '@/domain/propertyTypes/DateTime';
 import TextAttributesEditor from '@/components/SchemaEditor/Property/TextAttributesEditor.vue';
+import NumberAttributesEditor from '@/components/SchemaEditor/Property/NumberAttributesEditor.vue';
 import SeverityInput from '@/components/SchemaEditor/Property/SeverityInput.vue';
 import { newSelectProperty, SelectProperty } from '@/domain/propertyTypes/Select';
 import SelectAttributesEditor from '@/components/SchemaEditor/Property/SelectAttributesEditor.vue';
 import RelationAttributesEditor from '@/components/SchemaEditor/Property/RelationAttributesEditor.vue';
 import { PropertyDefinition } from '@/domain/PropertyDefinition';
 import { newNumberValue, newStringValue } from '@/domain/Value';
-import { createTestWrapper, FieldProps, findPropertyNameInput, reportUnparseableNumber, selectedText, setupMwMock } from '../../VueTestHelpers.ts';
+import {
+	createTestWrapper,
+	FieldProps,
+	findPropertyNameInput,
+	reportPartlyClearedDate,
+	reportUnparseableNumber,
+	selectedText,
+	setupMwMock,
+} from '../../VueTestHelpers.ts';
 
 describe( 'PropertyDefinitionEditor', () => {
 	beforeEach( () => {
@@ -78,6 +91,14 @@ describe( 'PropertyDefinitionEditor', () => {
 		await changeTypeTo( wrapper, 'select' );
 
 		expect( lastEmittedProperty( wrapper ).default ).toBeUndefined();
+	} );
+
+	it( 'takes the initial value typed into its field', async () => {
+		const wrapper = newWrapper( newNumberProperty( { name: 'Score' } ) );
+
+		await wrapper.findComponent( NumberInput ).find( 'input' ).setValue( '7' );
+
+		expect( lastEmittedProperty( wrapper ).default ).toEqual( newNumberValue( 7 ) );
 	} );
 
 	it( 'keeps Constraint severities when an attribute is edited', async () => {
@@ -215,7 +236,7 @@ describe( 'PropertyDefinitionEditor', () => {
 		} );
 	} );
 
-	describe( 'Unparseable initial value', () => {
+	describe( 'Unparseable text', () => {
 		it( 'reports nothing while the initial value can be read', () => {
 			const wrapper = newWrapper( newNumberProperty( { name: 'Score', default: newNumberValue( 5 ) } ) );
 
@@ -230,20 +251,29 @@ describe( 'PropertyDefinitionEditor', () => {
 			expect( unparseableInputMessage( wrapper ) ).toBe( 'neowiki-field-invalid-number' );
 		} );
 
-		it( 'reports nothing for a type whose input cannot reach that state', () => {
+		it( 'reports the field message when an attribute field holds text it cannot turn into a value', async () => {
+			const wrapper = newWrapper( newNumberProperty( { name: 'Score' } ) );
+
+			await reportUnparseableNumber( wrapper.findComponent( NumberAttributesEditor ).find( 'input' ) );
+
+			expect( unparseableInputMessage( wrapper ) ).toBe( 'neowiki-field-invalid-number' );
+		} );
+
+		it.each( [
+			[ 'date', DateInput, newDateProperty( { name: 'Founded' } ), 'neowiki-field-invalid-date' ],
+			[ 'date and time', DateTimeInput, newDateTimeProperty( { name: 'Opened' } ), 'neowiki-field-invalid-datetime' ],
+		] as const )( 'reports the field message when a %s initial value is partly cleared', async ( _, input, property, message ) => {
+			const wrapper = newWrapper( property );
+
+			await reportPartlyClearedDate( wrapper.findComponent( input ).find( 'input' ) );
+
+			expect( unparseableInputMessage( wrapper ) ).toBe( message );
+		} );
+
+		it( 'reports nothing while no field holds text it cannot read', () => {
 			const wrapper = newWrapper( newTextProperty( { name: 'Status' } ) );
 
 			expect( unparseableInputMessage( wrapper ) ).toBeNull();
-		} );
-
-		// The removal happens as the bad character is typed, not on save: this is the
-		// gap the save gates hide rather than close.
-		it( 'has already dropped the initial value while the field still shows the text', async () => {
-			const wrapper = newWrapper( newNumberProperty( { name: 'Score', default: newNumberValue( 5 ) } ) );
-
-			await reportUnparseableNumber( wrapper.findComponent( NumberInput ).find( 'input' ) );
-
-			expect( lastEmittedProperty( wrapper ).default ).toBeUndefined();
 		} );
 	} );
 

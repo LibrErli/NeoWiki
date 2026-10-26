@@ -7,17 +7,18 @@
 
 			<CdxField
 				class="datetime-attributes__minimum ext-neowiki-severity-field"
-				:status="minimumError === null ? 'default' : 'error'"
-				:messages="minimumError === null ? {} : { error: minimumError }"
+				:status="minimumMessage === null ? 'default' : 'error'"
+				:messages="minimumMessage === null ? {} : { error: minimumMessage }"
 			>
 				<template #label>
 					{{ $i18n( 'neowiki-property-editor-minimum' ).text() }}
 				</template>
 
-				<CdxTextInput
+				<NeoNativeInput
 					input-type="datetime-local"
 					:model-value="minimumInput"
 					@update:model-value="updateMinimum"
+					@unparseable-change="minimumUnparseable = $event"
 				/>
 				<SeverityInput
 					v-if="property.minimum !== undefined"
@@ -29,17 +30,18 @@
 
 			<CdxField
 				class="datetime-attributes__maximum ext-neowiki-severity-field"
-				:status="maximumError === null ? 'default' : 'error'"
-				:messages="maximumError === null ? {} : { error: maximumError }"
+				:status="maximumMessage === null ? 'default' : 'error'"
+				:messages="maximumMessage === null ? {} : { error: maximumMessage }"
 			>
 				<template #label>
 					{{ $i18n( 'neowiki-property-editor-maximum' ).text() }}
 				</template>
 
-				<CdxTextInput
+				<NeoNativeInput
 					input-type="datetime-local"
 					:model-value="maximumInput"
 					@update:model-value="updateMaximum"
+					@unparseable-change="maximumUnparseable = $event"
 				/>
 				<SeverityInput
 					v-if="property.maximum !== undefined"
@@ -53,13 +55,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-import { CdxField, CdxTextInput } from '@wikimedia/codex';
+import { computed, ref, watch } from 'vue';
+import { CdxField } from '@wikimedia/codex';
 import { DateTimeProperty } from '@/domain/propertyTypes/DateTime.ts';
 import { fromLocalInputValue, toLocalInputValue } from '@/domain/propertyTypes/dateTimeConversion.ts';
-import { AttributesEditorEmits, AttributesEditorProps } from '@/components/SchemaEditor/Property/AttributesEditorContract.ts';
+import { AttributesEditorEmits, AttributesEditorExposes, AttributesEditorProps } from '@/components/SchemaEditor/Property/AttributesEditorContract.ts';
 import NeoNestedField from '@/components/common/NeoNestedField.vue';
 import SeverityInput from '@/components/SchemaEditor/Property/SeverityInput.vue';
+import NeoNativeInput from '@/components/common/NeoNativeInput.vue';
 import { withConstraintSeverity } from '@/domain/PropertyDefinition.ts';
 import type { Severity } from '@/domain/Severity.ts';
 
@@ -70,6 +73,11 @@ const minimumInput = ref( toLocalInputValue( props.property.minimum ) );
 const maximumInput = ref( toLocalInputValue( props.property.maximum ) );
 const minimumError = ref<string | null>( null );
 const maximumError = ref<string | null>( null );
+const minimumUnparseable = ref<string | null>( null );
+const maximumUnparseable = ref<string | null>( null );
+
+const minimumMessage = computed( () => minimumUnparseable.value ?? minimumError.value );
+const maximumMessage = computed( () => maximumUnparseable.value ?? maximumError.value );
 
 watch( () => props.property.minimum, ( newVal ) => {
 	minimumInput.value = toLocalInputValue( newVal );
@@ -119,4 +127,8 @@ const updateMaximum = ( value: string ): void => {
 const updateSeverity = ( constraint: 'minimum' | 'maximum', severity: Severity ): void => {
 	emit( 'update:property', withConstraintSeverity( props.property, constraint, severity ) );
 };
+
+defineExpose<AttributesEditorExposes>( {
+	unparseableInputMessage: (): string | null => minimumUnparseable.value ?? maximumUnparseable.value
+} );
 </script>

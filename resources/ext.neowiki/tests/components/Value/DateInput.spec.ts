@@ -6,7 +6,7 @@ import { newStringValue, StringValue, ValueType } from '@/domain/Value';
 import DateInput from '@/components/Value/DateInput.vue';
 import { newDateProperty, DateProperty } from '@/domain/propertyTypes/Date';
 import { ValueInputExposes, ValueInputProps } from '@/components/Value/ValueInputContract.ts';
-import { createTestWrapper } from '../../VueTestHelpers.ts';
+import { createTestWrapper, reportPartlyClearedDate } from '../../VueTestHelpers.ts';
 
 describe( 'DateInput', () => {
 	beforeEach( () => {
@@ -211,6 +211,54 @@ describe( 'DateInput', () => {
 			const minCall = findMessageCall( 'neowiki-field-min-value' );
 			expect( minCall?.[ 1 ] ).not.toBe( minimum );
 			expect( minCall?.[ 1 ] ).not.toMatch( /^\d{4}-\d{2}-\d{2}$/ );
+		} );
+	} );
+
+	// Any report counts as an edit, which enables the save.
+	describe( 'Clearing the date part by part', () => {
+		const date = newStringValue( '2025-06-15' );
+
+		it( 'reports nothing while some parts remain', async () => {
+			const wrapper = newWrapper( { modelValue: date } );
+
+			await reportPartlyClearedDate( wrapper.find( 'input' ) );
+
+			expect( wrapper.emitted( 'update:modelValue' ) ).toBeUndefined();
+		} );
+
+		it( 'shows that it cannot read the date while some parts remain', async () => {
+			const wrapper = newWrapper( { modelValue: date } );
+
+			await reportPartlyClearedDate( wrapper.find( 'input' ) );
+
+			expect( wrapper.findComponent( CdxField ).props() ).toMatchObject( {
+				status: 'error',
+				messages: { error: 'neowiki-field-invalid-date' },
+			} );
+		} );
+
+		it( 'drops no server violation when it is given a new value over a partly cleared date', async () => {
+			const wrapper = newWrapper( {
+				modelValue: date,
+				property: newDateProperty( { name: 'Foo' } ),
+				serverViolations: [
+					{ propertyName: 'Foo', code: 'min-value', args: [ '2030-01-01' ], severity: 'error', valuePartIndex: null },
+				],
+			} );
+			await reportPartlyClearedDate( wrapper.find( 'input' ) );
+
+			await wrapper.setProps( { modelValue: newStringValue( '2031-01-01' ) } );
+
+			expect( wrapper.emitted( 'clear-server-violation' ) ).toHaveLength( 1 );
+		} );
+
+		it( 'returns the last date it could read as the current value while some parts remain', async () => {
+			const wrapper = newWrapper( { modelValue: date } );
+			await wrapper.find( 'input' ).setValue( '2030-03-20' );
+
+			await reportPartlyClearedDate( wrapper.find( 'input' ) );
+
+			expect( ( wrapper.vm as unknown as ValueInputExposes ).getCurrentValue() ).toEqual( newStringValue( '2030-03-20' ) );
 		} );
 	} );
 } );

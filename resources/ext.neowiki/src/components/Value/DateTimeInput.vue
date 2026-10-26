@@ -1,7 +1,7 @@
 <template>
 	<CdxField
-		:status="validationStatus"
-		:messages="validationMessages"
+		:status="fieldStatus"
+		:messages="fieldMessages"
 		:optional="props.property.required === false"
 	>
 		<template #label>
@@ -14,13 +14,14 @@
 				size="small"
 			/>
 		</template>
-		<CdxTextInput
+		<NeoNativeInput
 			input-type="datetime-local"
 			:start-icon="cdxIconClock"
 			:model-value="internalInputValue"
 			:min="toLocalInputValue( props.property.minimum )"
 			:max="toLocalInputValue( props.property.maximum )"
 			@update:model-value="onInput"
+			@unparseable-change="onUnparseableChange"
 		/>
 	</CdxField>
 </template>
@@ -31,13 +32,15 @@ import type { Value } from '@/domain/Value';
 
 <script setup lang="ts">
 import { ref, toRef, watch } from 'vue';
-import { CdxField, CdxIcon, CdxTextInput } from '@wikimedia/codex';
+import { CdxField, CdxIcon } from '@wikimedia/codex';
 import { cdxIconInfo, cdxIconClock } from '@wikimedia/codex-icons';
 import { newStringValue, StringValue, ValueType } from '@/domain/Value';
 import { DateTimeProperty, formatDateTimeForDisplay } from '@/domain/propertyTypes/DateTime.ts';
 import { fromLocalInputValue, toLocalInputValue } from '@/domain/propertyTypes/dateTimeConversion.ts';
 import { ValueInputEmits, ValueInputExposes, ValueInputProps } from '@/components/Value/ValueInputContract.ts';
 import { useFieldServerViolation } from '@/composables/useFieldServerViolation.ts';
+import { useUnparseableInput } from '@/composables/useUnparseableInput.ts';
+import NeoNativeInput from '@/components/common/NeoNativeInput.vue';
 
 const props = withDefaults(
 	defineProps<ValueInputProps<DateTimeProperty>>(),
@@ -49,12 +52,15 @@ const props = withDefaults(
 
 const emit = defineEmits<ValueInputEmits>();
 
-const { validationMessages, validationStatus, clearServerViolation } = useFieldServerViolation(
+const { validationMessages, clearServerViolation } = useFieldServerViolation(
 	toRef( props, 'property' ),
 	toRef( props, 'serverViolations' ),
 	emit,
 	formatDateTimeForDisplay
 );
+
+const { fieldMessages, fieldStatus, onUnparseableChange, unparseableInputMessage } =
+	useUnparseableInput( validationMessages, clearServerViolation );
 
 const internalInputValue = ref<string>( '' );
 
@@ -85,6 +91,7 @@ defineExpose<ValueInputExposes>( {
 	getCurrentValue: function(): Value | undefined {
 		const isoValue = fromLocalInputValue( internalInputValue.value );
 		return isoValue !== undefined ? newStringValue( isoValue ) : undefined;
-	}
+	},
+	unparseableInputMessage
 } );
 </script>

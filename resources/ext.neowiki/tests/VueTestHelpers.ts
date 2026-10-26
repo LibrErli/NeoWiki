@@ -2,6 +2,7 @@ import { mount, VueWrapper, DOMWrapper } from '@vue/test-utils';
 import { Component, DefineComponent, nextTick } from 'vue';
 import { expect, onTestFinished, vi } from 'vitest';
 import { ValidationMessages, ValidationStatusType } from '@wikimedia/codex';
+import type { AttributesEditorExposes } from '@/components/SchemaEditor/Property/AttributesEditorContract.ts';
 import { NeoWikiTestServices } from './NeoWikiTestServices.ts';
 import { keepMenuEscapesFromDialogs } from '@/codex/menuEscape.ts';
 
@@ -229,12 +230,29 @@ export function selectedText( input: HTMLInputElement ): string {
  * typing, so the browser's report is stubbed here.
  */
 export async function reportUnparseableNumber( input: DOMWrapper<Element> ): Promise<void> {
+	stubBadInput( input, true );
+	await input.setValue( '' );
+}
+
+/**
+ * Puts a native date or date and time input into the state a browser reports once one of its
+ * parts, such as the month, is cleared: the other parts stay visible, the value reads as empty,
+ * and validity.badInput is set, the same state as for a number it cannot parse.
+ */
+export async function reportPartlyClearedDate( input: DOMWrapper<Element> ): Promise<void> {
+	await reportUnparseableNumber( input );
+}
+
+export function stubBadInput( input: DOMWrapper<Element>, badInput: boolean ): void {
 	Object.defineProperty( input.element, 'validity', {
 		configurable: true,
-		get: () => ( { badInput: true } ),
+		get: () => ( { badInput } ),
 	} );
+}
 
-	await input.setValue( '' );
+/** The message an attributes editor holds the save with, as the property editor asks it. */
+export function unparseableAttributeMessage( attributesEditor: VueWrapper ): string | null {
+	return ( attributesEditor.vm as unknown as AttributesEditorExposes ).unparseableInputMessage?.() ?? null;
 }
 
 export function createTestWrapper<TComponent extends DefineComponent<any, any, any>>(
