@@ -167,11 +167,32 @@ class PropertyNameRules {
 	public static function problemsInSchema( array $names ): array {
 		$names = array_values( $names );
 		$keys = array_map( self::nearDuplicateKey( ... ), $names );
+		$indicesByKey = self::indicesByKey( $keys );
 
 		return array_values( array_filter( array_map(
-			static fn ( int $index ): ?PropertyNameProblem => self::problemInSchema( $names, $keys, $index ),
+			static fn ( int $index ): ?PropertyNameProblem => self::problemInSchema(
+				$names,
+				$keys[$index] === null ? [] : $indicesByKey[$keys[$index]],
+				$index
+			),
 			array_keys( $names )
 		) ) );
+	}
+
+	/**
+	 * @param array<int, ?string> $keys
+	 * @return array<array-key, int[]> The indices of the names with each key, in order
+	 */
+	private static function indicesByKey( array $keys ): array {
+		$indicesByKey = [];
+
+		foreach ( $keys as $index => $key ) {
+			if ( $key !== null ) {
+				$indicesByKey[$key][] = $index;
+			}
+		}
+
+		return $indicesByKey;
 	}
 
 	/**
@@ -183,6 +204,9 @@ class PropertyNameRules {
 		}
 
 		$key = mb_strtolower( (string)Normalizer::normalize( self::canonicalForm( $name ), Normalizer::NFKC ), 'UTF-8' );
+		// Lowercasing writes Σ as ς or σ by the letters around it, which PHP and browsers judge by different Unicode
+		// versions.
+		$key = str_replace( "\u{03C2}", "\u{03C3}", $key );
 		$key = (string)preg_replace( self::DEFAULT_IGNORABLE_CODE_POINTS, '', $key );
 
 		return (string)Normalizer::normalize(
@@ -196,17 +220,17 @@ class PropertyNameRules {
 	 * has.
 	 *
 	 * @param string[] $names
-	 * @param array<int, ?string> $keys
+	 * @param int[] $sameKeyIndices The indices of the names with this name's near-duplicate key, in order
 	 */
-	private static function problemInSchema( array $names, array $keys, int $index ): ?PropertyNameProblem {
+	private static function problemInSchema( array $names, array $sameKeyIndices, int $index ): ?PropertyNameProblem {
 		$problem = self::problemWith( $names[$index] );
 
 		if ( $problem !== null && $problem->rule !== PropertyNameRule::CanonicalForm ) {
 			return $problem;
 		}
 
-		foreach ( $keys as $otherIndex => $key ) {
-			if ( $key === $keys[$index] && ( $otherIndex < $index || ( $problem !== null && $otherIndex > $index ) ) ) {
+		foreach ( $sameKeyIndices as $otherIndex ) {
+			if ( $otherIndex < $index || ( $problem !== null && $otherIndex > $index ) ) {
 				return new PropertyNameProblem( $names[$index], PropertyNameRule::NearDuplicate, [ $names[$otherIndex] ] );
 			}
 		}

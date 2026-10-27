@@ -400,6 +400,16 @@ describe( 'PropertyDefinitionEditor', () => {
 			expect( nameFieldProps( wrapper ).messages ).toEqual( { error: 'neowiki-property-name-reservedid' } );
 		} );
 
+		it( 'says which characters the name typed cannot contain', async () => {
+			const wrapper = newWrapper( newTextProperty( { name: 'Status' } ) );
+
+			await typeName( wrapper, 'Phone #|' );
+
+			expect( nameFieldProps( wrapper ).messages ).toEqual( {
+				error: 'neowiki-property-name-charactersPhone #|# and |',
+			} );
+		} );
+
 		it( 'says the name typed is too similar to the name of another property', async () => {
 			const wrapper = newWrapper( newTextProperty( { name: 'Status' } ), { otherPropertyNames: [ 'Birth date' ] } );
 
@@ -427,10 +437,10 @@ describe( 'PropertyDefinitionEditor', () => {
 		} );
 
 		it( 'names the invisible characters of a name it opens with in another spelling', () => {
-			const wrapper = newWrapper( newTextProperty( { name: 'Birth\u{200B}date' } ) );
+			const wrapper = newWrapper( newTextProperty( { name: 'Birth\u{200B}date\u{00AD}' } ) );
 
 			expect( nameFieldProps( wrapper ).messages ).toEqual( {
-				error: 'neowiki-property-name-not-canonical-invisibleBirth\u{200B}dateBirthdateU+200B',
+				error: 'neowiki-property-name-not-canonical-invisibleBirth\u{200B}date\u{00AD}BirthdateU+200B and U+00AD',
 			} );
 		} );
 
@@ -440,6 +450,15 @@ describe( 'PropertyDefinitionEditor', () => {
 			await typeName( wrapper, 'Birthdate' );
 
 			expect( lastEmittedProperty( wrapper ).name.toString() ).toBe( 'Birthdate' );
+		} );
+
+		it( 'renames the property back to the name it opens with once that name is typed again', async () => {
+			const wrapper = newWrapper( newTextProperty( { name: 'id' } ), { otherPropertyNames: [ 'Title' ] } );
+
+			await typeName( wrapper, 'idx' );
+			await typeName( wrapper, 'id' );
+
+			expect( lastEmittedProperty( wrapper ).name.toString() ).toBe( 'id' );
 		} );
 
 		it( 'reports the name field message as input the save has to wait for', async () => {
