@@ -36,9 +36,13 @@ readonly class Neo4jProjectionStore implements GraphDatabasePlugin {
 			$this->upsertPageNode( $transaction, $page );
 
 			$detachedSubjectIds = $this->detachSubjectsFromPage( $transaction, $page->getId() );
+			$projectedSubjectIds = $this->updateSubjects( $transaction, $page, $orphanCandidates );
 
-			$this->removeAbsentSubjects( $transaction, $detachedSubjectIds, $page, $orphanCandidates );
-			$this->updateSubjects( $transaction, $page, $orphanCandidates );
+			// Includes a Subject whose Schema does not resolve: left in place, it would keep stale data that no
+			// later save or deletion of the page reaches.
+			$unprojectedSubjectIds = array_values( array_diff( $detachedSubjectIds, $projectedSubjectIds ) );
+
+			$this->removeSubjects( $transaction, $unprojectedSubjectIds, $orphanCandidates );
 			$this->deleteOrphanStubs( $transaction, $orphanCandidates );
 		} );
 	}
@@ -70,29 +74,6 @@ readonly class Neo4jProjectionStore implements GraphDatabasePlugin {
 				$typedParams,
 			)
 		);
-	}
-
-	/**
-	 * Removes the subjects that were attached to the page in the graph but are no longer present on the
-	 * page. This reuses removeSubjects so that a removed subject still referenced by other subjects is
-	 * kept as a stub instead of being deleted, keeping the incoming relations valid.
-	 *
-	 * @param string[] $attachedSubjectIds
-	 */
-	private function removeAbsentSubjects(
-		TransactionInterface $transaction,
-		array $attachedSubjectIds,
-		Page $page,
-		Neo4jOrphanCandidates $orphanCandidates
-	): void {
-		$presentSubjectIds = $page->getSubjects()->getAllSubjects()->getIdsAsTextArray();
-
-		$absentSubjectIds = array_values( array_filter(
-			$attachedSubjectIds,
-			fn( string $subjectId ) => !in_array( $subjectId, $presentSubjectIds, true )
-		) );
-
-		$this->removeSubjects( $transaction, $absentSubjectIds, $orphanCandidates );
 	}
 
 	/**
@@ -164,12 +145,15 @@ readonly class Neo4jProjectionStore implements GraphDatabasePlugin {
 		return $date->format( 'Y-m-d\TH:i:s' );
 	}
 
+	/**
+	 * @return string[]
+	 */
 	private function updateSubjects(
 		TransactionInterface $transaction,
 		Page $page,
 		Neo4jOrphanCandidates $orphanCandidates
-	): void {
-		$this->subjectUpdaterFactory
+	): array {
+		return $this->subjectUpdaterFactory
 			->newSubjectUpdater( $transaction, $page->getId(), $orphanCandidates )
 			->updateSubjects( $page );
 	}
@@ -339,13 +323,11 @@ readonly class Neo4jProjectionStore implements GraphDatabasePlugin {
 	 * the complete set of nodes the write can have orphaned. Anchoring on their ids keeps the cost
 	 * proportional to what the write changed rather than to the size of the graph.
 	 *
-	 * A candidate is confirmed to be a stub by carrying no node label beyond :Subject, not by the absence
-	 * of a link from a page. Both hold for a stub, but only the first holds for a stub alone: a removed
-	 * subject commonly references normal subjects, and a subject whose schema failed to resolve keeps its
-	 * data while losing its link to the page. The node labels are the oracle rather than the absence of a
-	 * name because a Subject nobody named has no name either, and that combination of conditions is
-	 * reachable. One pass then suffices, since a stub has no outgoing relations and so cannot orphan
-	 * another node when deleted.
+	 * A candidate is confirmed to be a stub by carrying no node label beyond :Subject, the mark graph-model.md
+	 * gives a stub, rather than by the absence of a link from a page, which a node with data written to the
+	 * graph by other means can lack too. The node labels are the oracle rather than the absence of a name
+	 * because a Subject nobody named has no name either. One pass then suffices, since a stub has no
+	 * outgoing relations and so cannot orphan another node when deleted.
 	 *
 	 * A candidate that gained a new incoming relation later in the same transaction has one by the time
 	 * this runs, and survives.
