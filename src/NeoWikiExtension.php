@@ -21,6 +21,7 @@ use MediaWiki\Rest\Response;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Session\CsrfTokenSet;
 use MediaWiki\Title\Title;
+use MediaWiki\User\User;
 use MediaWiki\User\UserIdentityValue;
 use MessageLocalizer;
 use Opis\JsonSchema\Validator;
@@ -89,6 +90,7 @@ use ProfessionalWiki\NeoWiki\Domain\GraphDatabase\GraphBackendNotConfiguredExcep
 use ProfessionalWiki\NeoWiki\Domain\GraphDatabase\GraphDatabasePlugin;
 use ProfessionalWiki\NeoWiki\Domain\GraphDatabase\GraphDatabasePluginRegistry;
 use ProfessionalWiki\NeoWiki\Domain\Schema\SchemaReferenceParser;
+use ProfessionalWiki\NeoWiki\Domain\Schema\SchemaSubjectNormalizer;
 use ProfessionalWiki\NeoWiki\Application\SchemaLookup;
 use ProfessionalWiki\NeoWiki\Application\SubjectCountLookup;
 use ProfessionalWiki\NeoWiki\Application\SubjectLabelLookup;
@@ -723,7 +725,7 @@ class NeoWikiExtension {
 			MediaWikiServices::getInstance()->getRevisionLookup(),
 			new PageContentSaver(
 				MediaWikiServices::getInstance()->getWikiPageFactory(),
-				MediaWikiServices::getInstance()->getUserFactory()->newSystemUser( 'NeoWiki Maintenance', [ 'steal' => true ] ),
+				User::newSystemUser( 'NeoWiki Maintenance', [ 'steal' => true ] ),
 			),
 			LoggerFactory::getInstance( 'NeoWiki' ),
 		);
@@ -2210,7 +2212,7 @@ class NeoWikiExtension {
 			$pageSubjectsLookup,
 			$this->newHostSubjectBuilder(),
 			$this->getSchemaResolver(),
-			new \ProfessionalWiki\NeoWiki\Domain\Schema\SchemaSubjectNormalizer(),
+			new SchemaSubjectNormalizer(),
 		);
 	}
 

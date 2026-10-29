@@ -36,14 +36,15 @@ describe( 'exportSchemas', () => {
 			deserializer.deserialize( 'Person', {
 				description: 'A human being',
 				propertyDefinitions: {
-					Name: { type: 'text', required: { severity: 'error' }, maxLength: 80 },
-					Age: { type: 'number', minimum: 0, precision: 0, default: 18 },
+					Name: { id: '4053e4dd353f845b72a3ea09aef12cd3', type: 'text', required: { severity: 'error' }, maxLength: 80 },
+					Age: { id: '340e796c66c073439bca498daf816f06', type: 'number', minimum: 0, precision: 0, default: 18 },
 					Status: {
+						id: 'cc1805df6368e11d79be37cdb38a5b05',
 						type: 'select',
 						options: [ { id: 'o1aaaaaaaaaaaa1', label: 'Alive' }, { id: 'o1aaaaaaaaaaaa2', label: 'Dead' } ],
 					},
-					Employer: { type: 'relation', targetSchemas: [ 'Company' ], multiple: true },
-					Signature: { type: 'notRegisteredHere', strokes: 3 },
+					Employer: { id: '8136a21fd76c994dea5cade3591a6a0a', type: 'relation', targetSchemas: [ 'Company' ], multiple: true },
+					Signature: { id: '7fb20b5e6ff72d488634da3404a4100b', type: 'notRegisteredHere', strokes: 3 },
 				},
 			} ),
 			deserializer.deserialize( 'Company', { propertyDefinitions: {} } ),

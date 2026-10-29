@@ -7,7 +7,9 @@ namespace ProfessionalWiki\NeoWiki\EntryPoints\REST;
 use MediaWiki\Request\WebResponse;
 use MediaWiki\Rest\LocalizedHttpException;
 use MediaWiki\Rest\Response;
+use ProfessionalWiki\NeoWiki\Domain\Schema\Schema;
 use ProfessionalWiki\NeoWiki\Domain\Schema\SchemaName;
+use ProfessionalWiki\NeoWiki\Domain\Schema\SchemaPropertyRenames;
 use ProfessionalWiki\NeoWiki\EntryPoints\Content\SchemaContent;
 use ProfessionalWiki\NeoWiki\NeoWikiExtension;
 use ProfessionalWiki\NeoWiki\Presentation\DocumentationUrl;
@@ -88,44 +90,9 @@ class SaveSchemaApi extends SchemaPageWriteApi {
 		//    feature), fall back to matching by type — a removed name and an added name with the
 		//    same type is treated as a rename.
 		$renamed = $storedSchema->getRenamedProperties();
-
-		$storedHasIds = false;
-		foreach ( $storedSchema->getAllProperties()->asMap() as $oldProperty ) {
-			if ( $oldProperty->getId() !== null ) {
-				$storedHasIds = true;
-				break;
-			}
-		}
-
-		if ( $storedHasIds ) {
-			// Strategy 1: match by id
-			foreach ( $newSchema->getAllProperties()->asMap() as $newName => $newProperty ) {
-				$id = $newProperty->getId();
-				if ( $id === null ) {
-					continue;
-				}
-
-				foreach ( $storedSchema->getAllProperties()->asMap() as $oldName => $oldProperty ) {
-					if ( $oldProperty->getId() === $id && $oldName !== $newName ) {
-						$renamed[$oldName] = $id;
-						break;
-					}
-				}
-			}
-		} else {
-			// Strategy 2: fallback to type-based heuristic when old schema has no ids
-			$typeBasedRenames = \ProfessionalWiki\NeoWiki\Domain\Schema\SchemaPropertyRenames::detect( $storedSchema, $newSchema );
-
-			foreach ( $typeBasedRenames as $oldName => $newName ) {
-				// Find the new property's id
-				if ( $newSchema->hasProperty( $newName ) ) {
-					$newProperty = $newSchema->getProperty( $newName );
-					if ( $newProperty->getId() !== null ) {
-						$renamed[$oldName] = $newProperty->getId();
-					}
-				}
-			}
-		}
+		$renamed += $this->storedSchemaHasIds( $storedSchema )
+			? $this->detectRenamesById( $storedSchema, $newSchema )
+			: $this->detectRenamesByType( $storedSchema, $newSchema );
 
 		// Only keep entries whose id still exists in the new Schema
 		$renamed = array_filter(
@@ -140,6 +107,54 @@ class SaveSchemaApi extends SchemaPageWriteApi {
 		}
 
 		return $newSchemaData;
+	}
+
+	private function storedSchemaHasIds( Schema $storedSchema ): bool {
+		foreach ( $storedSchema->getAllProperties()->asMap() as $oldProperty ) {
+			if ( $oldProperty->getId() !== null ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * @return array<string, string> Old property name => stable property id
+	 */
+	private function detectRenamesById( Schema $storedSchema, Schema $newSchema ): array {
+		$renamed = [];
+		foreach ( $newSchema->getAllProperties()->asMap() as $newName => $newProperty ) {
+			$id = $newProperty->getId();
+			if ( $id === null ) {
+				continue;
+			}
+
+			foreach ( $storedSchema->getAllProperties()->asMap() as $oldName => $oldProperty ) {
+				if ( $oldProperty->getId() === $id && $oldName !== $newName ) {
+					$renamed[$oldName] = $id;
+					break;
+				}
+			}
+		}
+		return $renamed;
+	}
+
+	/**
+	 * @return array<string, string> Old property name => stable property id
+	 */
+	private function detectRenamesByType( Schema $storedSchema, Schema $newSchema ): array {
+		$renamed = [];
+		$typeBasedRenames = SchemaPropertyRenames::detect( $storedSchema, $newSchema );
+
+		foreach ( $typeBasedRenames as $oldName => $newName ) {
+			if ( $newSchema->hasProperty( $newName ) ) {
+				$newProperty = $newSchema->getProperty( $newName );
+				if ( $newProperty->getId() !== null ) {
+					$renamed[$oldName] = $newProperty->getId();
+				}
+			}
+		}
+		return $renamed;
 	}
 
 	protected function mapActionModuleResult( array $data ): array {

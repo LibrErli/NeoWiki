@@ -83,6 +83,7 @@ describe( 'SchemaSerializer', () => {
 				description: 'Test Description',
 				propertyDefinitions: {
 					textProperty: {
+						id: expect.stringMatching( /^[0-9a-f]{32}$/ ),
 						type: 'text',
 						description: 'Text property',
 						required: true,
@@ -90,6 +91,7 @@ describe( 'SchemaSerializer', () => {
 						uniqueItems: false,
 					},
 					urlProperty: {
+						id: expect.stringMatching( /^[0-9a-f]{32}$/ ),
 						type: 'url',
 						description: 'URL property',
 						required: false,
@@ -97,6 +99,7 @@ describe( 'SchemaSerializer', () => {
 						uniqueItems: true,
 					},
 					numberProperty: {
+						id: expect.stringMatching( /^[0-9a-f]{32}$/ ),
 						type: 'number',
 						description: 'Number property',
 						required: true,
@@ -105,6 +108,7 @@ describe( 'SchemaSerializer', () => {
 						maximum: 100,
 					},
 					relationProperty: {
+						id: expect.stringMatching( /^[0-9a-f]{32}$/ ),
 						type: 'relation',
 						description: 'Relation property',
 						required: false,
@@ -132,6 +136,7 @@ describe( 'SchemaSerializer', () => {
 				description: 'Schema with an unregistered type',
 				propertyDefinitions: {
 					Swatch: {
+						id: 'b08855aac7b6419af583ff0835046364',
 						type: 'zzz-color',
 						description: 'Brand colour',
 						required: false,
@@ -153,6 +158,7 @@ describe( 'SchemaSerializer', () => {
 				description: 'Schema with annotated Constraints',
 				propertyDefinitions: {
 					Score: {
+						id: 'e8c341f84b46385974806801b0228111',
 						type: 'number',
 						description: '',
 						required: { severity: 'error' },
@@ -247,6 +253,7 @@ describe( 'SchemaSerializer', () => {
 				description: '',
 				propertyDefinitions: {
 					Swatch: {
+						id: '39e4121d654f61198dc8086e05788e21',
 						type: 'zzz-color',
 						description: '',
 						required: false,

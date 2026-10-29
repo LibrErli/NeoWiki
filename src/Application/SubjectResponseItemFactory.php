@@ -8,7 +8,11 @@ use ProfessionalWiki\NeoWiki\Application\Queries\GetSubject\GetSubjectResponseIt
 use ProfessionalWiki\NeoWiki\Application\Source\SchemaResolver;
 use ProfessionalWiki\NeoWiki\Domain\Page\PageIdentifiers;
 use ProfessionalWiki\NeoWiki\Domain\Page\PageSubjects;
+use ProfessionalWiki\NeoWiki\Domain\Schema\PropertyName;
+use ProfessionalWiki\NeoWiki\Domain\Schema\Schema;
 use ProfessionalWiki\NeoWiki\Domain\Schema\SchemaSubjectNormalizer;
+use ProfessionalWiki\NeoWiki\Domain\Statement;
+use ProfessionalWiki\NeoWiki\Domain\Subject\StatementList;
 use ProfessionalWiki\NeoWiki\Domain\Subject\Subject;
 use ProfessionalWiki\NeoWiki\Domain\Subject\SubjectDisplayName;
 
@@ -102,53 +106,12 @@ readonly class SubjectResponseItemFactory {
 			return $subject;
 		}
 
-		$statements = $subject->getStatements();
 		$newStatements = [];
 		$changed = false;
+		$claimedByName = $this->claimedPropertyNames( $subject, $schema );
 
-		// Track which schema properties already have a statement by name
-		$claimedByName = [];
-		foreach ( $statements->asArray() as $key => $statement ) {
-			if ( $schema->hasProperty( $key ) ) {
-				$claimedByName[$key] = true;
-			}
-		}
-
-		foreach ( $statements->asArray() as $key => $statement ) {
-			$propertyId = $statement->getPropertyId();
-			$newKey = $key;
-
-			if ( $propertyId === null ) {
-				// 1. Direct name match in current Schema
-				if ( $schema->hasProperty( $key ) ) {
-					$property = $schema->getProperty( $key );
-					if ( $property->getId() !== null ) {
-						$propertyId = $property->getId();
-					}
-				}
-				// 2. Old name from a rename: look up the stable id via renamedProperties
-				if ( $propertyId === null ) {
-					$renamedId = $schema->propertyIdForOldName( $key );
-					if ( $renamedId !== null && $schema->hasPropertyWithId( $renamedId ) ) {
-						$propertyId = $renamedId;
-						$newKey = $schema->resolvePropertyKey( $renamedId );
-					}
-				}
-				// 3. Fallback heuristic: unclaimed schema property with the same type
-				if ( $propertyId === null && !$schema->hasProperty( $key ) ) {
-					foreach ( $schema->getAllProperties()->asMap() as $propName => $propDef ) {
-						if ( isset( $claimedByName[$propName] ) ) {
-							continue;
-						}
-						if ( $propDef->getPropertyType() === $statement->getPropertyType() && $propDef->getId() !== null ) {
-							$propertyId = $propDef->getId();
-							$newKey = $propName;
-							$claimedByName[$propName] = true;
-							break;
-						}
-					}
-				}
-			}
+		foreach ( $subject->getStatements()->asArray() as $key => $statement ) {
+			[ $propertyId, $newKey ] = $this->resolvePropertyIdAndKey( $key, $statement, $schema, $claimedByName );
 
 			if ( $propertyId !== null && $propertyId !== $statement->getPropertyId() ) {
 				$statement = $statement->withPropertyId( $propertyId );
@@ -157,8 +120,8 @@ readonly class SubjectResponseItemFactory {
 
 			if ( $newKey !== $key ) {
 				// Re-key the statement under the current property name
-				$statement = new \ProfessionalWiki\NeoWiki\Domain\Statement(
-					new \ProfessionalWiki\NeoWiki\Domain\Schema\PropertyName( $newKey ),
+				$statement = new Statement(
+					new PropertyName( $newKey ),
 					$statement->getPropertyType(),
 					$statement->getValue(),
 					$propertyId,
@@ -170,10 +133,70 @@ readonly class SubjectResponseItemFactory {
 		}
 
 		if ( $changed ) {
-			return $subject->withStatements( new \ProfessionalWiki\NeoWiki\Domain\Subject\StatementList( array_values( $newStatements ) ) );
+			$subject = $subject->withStatements( new StatementList( array_values( $newStatements ) ) );
 		}
 
-		return $subject;
+		// Re-key statements that already carry a stable id under the property's current name
+		return $this->schemaSubjectNormalizer->normalize( $subject, $schema );
+	}
+
+	/**
+	 * @return array<string, true> Schema property names that already have a statement by name
+	 */
+	private function claimedPropertyNames( Subject $subject, Schema $schema ): array {
+		$claimedByName = [];
+		foreach ( $subject->getStatements()->asArray() as $key => $statement ) {
+			if ( $schema->hasProperty( $key ) ) {
+				$claimedByName[$key] = true;
+			}
+		}
+		return $claimedByName;
+	}
+
+	/**
+	 * Resolves the stable property id and the key to store the statement under:
+	 * 1. Direct name match in the current Schema
+	 * 2. Old name from a rename, via the Schema's renamedProperties map
+	 * 3. Fallback heuristic: an unclaimed Schema property with the same type
+	 *
+	 * @param array<string, true> $claimedByName
+	 * @return array{?string, string} The property id (null when none resolved) and the statement key
+	 */
+	private function resolvePropertyIdAndKey( string $key, Statement $statement, Schema $schema, array &$claimedByName ): array {
+		$propertyId = $statement->getPropertyId();
+		$newKey = $key;
+
+		if ( $propertyId !== null ) {
+			return [ $propertyId, $newKey ];
+		}
+
+		if ( $schema->hasProperty( $key ) ) {
+			$propertyId = $schema->getProperty( $key )->getId();
+		}
+
+		if ( $propertyId === null ) {
+			$renamedId = $schema->propertyIdForOldName( $key );
+			if ( $renamedId !== null && $schema->hasPropertyWithId( $renamedId ) ) {
+				$propertyId = $renamedId;
+				$newKey = $schema->resolvePropertyKey( $renamedId );
+			}
+		}
+
+		if ( $propertyId === null && !$schema->hasProperty( $key ) ) {
+			foreach ( $schema->getAllProperties()->asMap() as $propName => $propDef ) {
+				if ( isset( $claimedByName[$propName] ) ) {
+					continue;
+				}
+				if ( $propDef->getPropertyType() === $statement->getPropertyType() && $propDef->getId() !== null ) {
+					$propertyId = $propDef->getId();
+					$newKey = $propName;
+					$claimedByName[$propName] = true;
+					break;
+				}
+			}
+		}
+
+		return [ $propertyId, $newKey ];
 	}
 
 	/**

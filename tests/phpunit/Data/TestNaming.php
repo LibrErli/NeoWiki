@@ -10,6 +10,7 @@ use ProfessionalWiki\NeoWiki\Application\SchemaLookup;
 use ProfessionalWiki\NeoWiki\Application\SubjectRepository;
 use ProfessionalWiki\NeoWiki\Application\SubjectResponseItemFactory;
 use ProfessionalWiki\NeoWiki\Domain\Page\DependentSubjectRules;
+use ProfessionalWiki\NeoWiki\Domain\Schema\SchemaSubjectNormalizer;
 use ProfessionalWiki\NeoWiki\Tests\TestDoubles\InMemorySchemaLookup;
 
 class TestNaming {
@@ -20,7 +21,9 @@ class TestNaming {
 	): SubjectResponseItemFactory {
 		return new SubjectResponseItemFactory(
 			new PageSubjectsLookup( $subjectRepository ),
-			self::newHostSubjectBuilder( $schemaLookup )
+			self::newHostSubjectBuilder( $schemaLookup ),
+			TestSources::newSchemaResolver( $schemaLookup ),
+			new SchemaSubjectNormalizer()
 		);
 	}
 
