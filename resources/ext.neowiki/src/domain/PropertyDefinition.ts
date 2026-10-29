@@ -40,6 +40,13 @@ export interface PropertyDefinition {
 	readonly default?: Value;
 
 	/**
+	 * Stable identity of this property, independent of its name (which is a label and may be
+	 * renamed). Absent for Schemas saved before property ids existed. Statements reference
+	 * properties by this id, so a rename does not orphan them (issue #1802).
+	 */
+	readonly id?: string;
+
+	/**
 	 * Severity per Constraint name for Constraints written in the object form
 	 * (ADR 26). Absent means every Constraint has the default `warning` severity;
 	 * the map is only set when at least one Constraint is annotated, so shorthand
@@ -47,6 +54,15 @@ export interface PropertyDefinition {
 	 */
 	readonly constraintSeverities?: Readonly<Record<string, Severity>>;
 
+}
+
+/**
+ * Generates a new unique property id (32 hex chars).
+ */
+export function generatePropertyId(): string {
+	const bytes = new Uint8Array( 16 );
+	crypto.getRandomValues( bytes );
+	return Array.from( bytes, ( b ) => b.toString( 16 ).padStart( 2, '0' ) ).join( '' );
 }
 
 /**
@@ -150,6 +166,7 @@ export class PropertyDefinitionDeserializer {
 			default: values.default !== undefined && values.default !== null ?
 				this.valueDeserializer.deserialize( values.default, json.type ) :
 				undefined,
+			...( typeof values.id === 'string' && values.id !== '' ? { id: values.id } : {} ),
 			...( Object.keys( severities ).length > 0 ? { constraintSeverities: severities } : {} ),
 		};
 

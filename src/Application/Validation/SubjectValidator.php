@@ -48,12 +48,16 @@ readonly class SubjectValidator {
 		$relationTargets = $this->relationTargets( $statements->getReferencedSubjects(), $writtenAlongside );
 
 		foreach ( $statements->asArray() as $statement ) {
-			if ( $schema->hasProperty( $statement->getPropertyName() ) ) {
+			// Resolve property aliases: a statement stored under an old name validates against the current property
+			$resolvedName = $schema->resolvePropertyName( $statement->getPropertyName() );
+			$propertyName = $schema->hasProperty( $resolvedName ) ? $resolvedName : $statement->getPropertyName();
+
+			if ( $schema->hasProperty( $propertyName ) ) {
 				$violations = array_merge(
 					$violations,
 					$this->validateStatement(
 						$statement,
-						$schema->getProperty( $statement->getPropertyName() ),
+						$schema->getProperty( $propertyName ),
 						$relationTargets
 					)
 				);
@@ -262,7 +266,27 @@ readonly class SubjectValidator {
 		foreach ( $schema->getAllProperties()->asMap() as $name => $definition ) {
 			$propertyName = new PropertyName( $name );
 
-			if ( !$definition->isRequired() || $statements->getStatement( $propertyName ) !== null ) {
+			// Check both the current name and any old (renamed) name that might hold the statement
+			$hasStatement = $statements->getStatement( $propertyName ) !== null;
+			if ( !$hasStatement ) {
+				// renamedProperties maps old name => property id; check if any old name for this
+				// property's id has a statement (issue #1802)
+				$propertyId = $definition->getId();
+				if ( $propertyId !== null ) {
+					foreach ( $schema->getRenamedProperties() as $oldName => $id ) {
+						if ( $id === $propertyId && $statements->getStatement( new PropertyName( $oldName ) ) !== null ) {
+							$hasStatement = true;
+							break;
+						}
+					}
+				}
+				// Also check if the statement itself carries this property's id
+				if ( !$hasStatement && $propertyId !== null ) {
+					$hasStatement = $statements->hasStatementWithId( $propertyId );
+				}
+			}
+
+			if ( !$definition->isRequired() || $hasStatement ) {
 				continue;
 			}
 

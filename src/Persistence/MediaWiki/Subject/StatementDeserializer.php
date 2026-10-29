@@ -37,10 +37,17 @@ class StatementDeserializer {
 		// Revisions written before the key was renamed hold "type", and revision content cannot be migrated.
 		$propertyType = $json['propertyType'] ?? $json['type'];
 
+		// Property id (stable identity), when the Schema defined one when this was written.
+		// Statements written before property ids existed have none and are identified by name.
+		$propertyId = isset( $json['propertyId'] ) && is_string( $json['propertyId'] ) && $json['propertyId'] !== ''
+			? $json['propertyId']
+			: null;
+
 		return new Statement(
 			property: new PropertyName( $propertyName ),
 			propertyType: $propertyType,
 			value: $this->deserializeValue( $propertyType, $json['value'] ),
+			propertyId: $propertyId,
 		);
 	}
 

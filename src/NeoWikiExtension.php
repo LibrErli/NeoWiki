@@ -113,6 +113,7 @@ use ProfessionalWiki\NeoWiki\Application\NullRevisionPolicy;
 use ProfessionalWiki\NeoWiki\Application\SubjectIdMinter;
 use ProfessionalWiki\NeoWiki\Application\SubjectHostingPageResolver;
 use ProfessionalWiki\NeoWiki\Application\SubjectLookup;
+use ProfessionalWiki\NeoWiki\Application\SubjectPropertyRenamer;
 use ProfessionalWiki\NeoWiki\Application\SubjectRepository;
 use ProfessionalWiki\NeoWiki\Application\SubjectResolver;
 use ProfessionalWiki\NeoWiki\Application\MappingLookup;
@@ -708,6 +709,22 @@ class NeoWikiExtension {
 			$pagePropertiesSource,
 			$this->getRevisionPolicy(),
 			MediaWikiServices::getInstance()->getTitleFormatter(),
+			LoggerFactory::getInstance( 'NeoWiki' ),
+		);
+	}
+
+	/**
+	 * Applies property renames to stored Subject data after a Schema page is saved with
+	 * renamed properties (issue #1802).
+	 */
+	public function newSubjectPropertyRenamer(): SubjectPropertyRenamer {
+		return new SubjectPropertyRenamer(
+			MediaWikiServices::getInstance()->getConnectionProvider(),
+			MediaWikiServices::getInstance()->getRevisionLookup(),
+			new PageContentSaver(
+				MediaWikiServices::getInstance()->getWikiPageFactory(),
+				MediaWikiServices::getInstance()->getUserFactory()->newSystemUser( 'NeoWiki Maintenance', [ 'steal' => true ] ),
+			),
 			LoggerFactory::getInstance( 'NeoWiki' ),
 		);
 	}
@@ -2114,6 +2131,7 @@ class NeoWikiExtension {
 			pageSubjectsLookup: $this->newPageSubjectsLookup(),
 			pageIdentifiersResolver: $this->getPageIdentifiersResolver(),
 			readAuthorizer: $this->newPageReadAuthorizer( $authority ),
+			responseItemFactory: $this->newSubjectResponseItemFactory( $this->newPageSubjectsLookup() ),
 		);
 	}
 
@@ -2188,7 +2206,12 @@ class NeoWikiExtension {
 	}
 
 	private function newSubjectResponseItemFactory( PageSubjectsAtRevisionLookup $pageSubjectsLookup ): SubjectResponseItemFactory {
-		return new SubjectResponseItemFactory( $pageSubjectsLookup, $this->newHostSubjectBuilder() );
+		return new SubjectResponseItemFactory(
+			$pageSubjectsLookup,
+			$this->newHostSubjectBuilder(),
+			$this->getSchemaResolver(),
+			new \ProfessionalWiki\NeoWiki\Domain\Schema\SchemaSubjectNormalizer(),
+		);
 	}
 
 	public function newHostSubjectBuilder(): HostSubjectBuilder {

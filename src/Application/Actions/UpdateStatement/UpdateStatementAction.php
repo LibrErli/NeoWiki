@@ -138,15 +138,36 @@ readonly class UpdateStatementAction {
 			],
 		];
 
-		return $this->statementListBuilder->build( $statements )->getStatement( $propertyName );
+		$statement = $this->statementListBuilder->build( $statements )->getStatement( $propertyName );
+
+		// Attach the Schema's stable property id, so a later rename of the property name
+		// does not orphan this statement (issue #1802)
+		if ( $statement !== null && $schema !== null ) {
+			$resolvedName = $schema->resolvePropertyName( $propertyName );
+			$property = $schema->hasProperty( $resolvedName ) ? $schema->getProperty( $resolvedName )
+				: ( $schema->hasProperty( $propertyName ) ? $schema->getProperty( $propertyName ) : null );
+
+			if ( $property !== null && $property->getId() !== null ) {
+				return $statement->withPropertyId( $property->getId() );
+			}
+		}
+
+		return $statement;
 	}
 
 	/**
 	 * @throws InvalidArgumentException
 	 */
 	private function getSchemaPropertyType( ?Schema $schema, PropertyName $propertyName ): string {
-		if ( $schema !== null && $schema->hasProperty( $propertyName ) ) {
-			return $schema->getProperty( $propertyName )->getPropertyType();
+		if ( $schema !== null ) {
+			// Resolve property aliases: a statement stored under an old name maps to the current property
+			$resolvedName = $schema->resolvePropertyName( $propertyName );
+			if ( $schema->hasProperty( $resolvedName ) ) {
+				return $schema->getProperty( $resolvedName )->getPropertyType();
+			}
+			if ( $schema->hasProperty( $propertyName ) ) {
+				return $schema->getProperty( $propertyName )->getPropertyType();
+			}
 		}
 
 		throw new InvalidArgumentException(

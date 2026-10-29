@@ -6,6 +6,7 @@ import { RelationValue, type Value, valueToJson } from '@/domain/Value';
 export class StatementList implements Iterable<Statement> {
 
 	private readonly statements = new Map<string, Statement>();
+	private readonly idsToNames = new Map<string, string>();
 
 	public constructor( statements: Statement[] ) {
 		for ( const statement of statements ) {
@@ -16,6 +17,10 @@ export class StatementList implements Iterable<Statement> {
 			}
 
 			this.statements.set( propertyName, statement );
+
+			if ( statement.propertyId !== undefined ) {
+				this.idsToNames.set( statement.propertyId, propertyName );
+			}
 		}
 	}
 
@@ -25,6 +30,26 @@ export class StatementList implements Iterable<Statement> {
 
 	public has( name: PropertyName ): boolean {
 		return this.statements.has( name.toString() );
+	}
+
+	/**
+	 * Looks up a statement by its stable property id. Returns undefined when no statement
+	 * carries this id.
+	 */
+	public getById( propertyId: string ): Statement | undefined {
+		const name = this.idsToNames.get( propertyId );
+		return name !== undefined ? this.statements.get( name ) : undefined;
+	}
+
+	public hasId( propertyId: string ): boolean {
+		return this.idsToNames.has( propertyId );
+	}
+
+	/**
+	 * Resolves a key that may be a property id to the property name used as key in this list.
+	 */
+	public resolveKey( key: string ): string {
+		return this.idsToNames.get( key ) ?? key;
 	}
 
 	public [ Symbol.iterator ](): IterableIterator<Statement> {
@@ -100,8 +125,14 @@ function statementToJson( statement: Statement ): unknown {
 		return null;
 	}
 
-	return {
+	const json: Record<string, unknown> = {
 		value: value,
 		propertyType: statement.propertyType,
 	};
+
+	if ( statement.propertyId !== undefined ) {
+		json.propertyId = statement.propertyId;
+	}
+
+	return json;
 }

@@ -19,7 +19,15 @@ readonly class PropertyCore {
 		public bool $required,
 		public mixed $default,
 		public array $constraintSeverities = [],
+		public ?string $id = null,
 	) {
+	}
+
+	/**
+	 * Generates a new unique property id (32 hex chars).
+	 */
+	public static function generateId(): string {
+		return bin2hex( random_bytes( 16 ) );
 	}
 
 }

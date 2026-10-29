@@ -153,7 +153,18 @@ class SubjectResolver {
 			return null;
 		}
 
-		return $schema !== null && $schema->hasProperty( $propertyName ) ? $schema->getProperty( $propertyName ) : null;
+		if ( $schema === null ) {
+			return null;
+		}
+
+		// Resolve property aliases: a statement stored under an old name resolves to the current property
+		$resolvedName = $schema->resolvePropertyName( $propertyName );
+
+		if ( $schema->hasProperty( $resolvedName ) ) {
+			return $schema->getProperty( $resolvedName );
+		}
+
+		return $schema->hasProperty( $propertyName ) ? $schema->getProperty( $propertyName ) : null;
 	}
 
 	private function resolveDisplayNameOnHostingPage( SubjectId $subjectId ): ?string {

@@ -20,6 +20,14 @@ abstract class PropertyDefinition {
 
 	abstract public function getPropertyType(): string;
 
+	/**
+	 * The stable identity of this property. Null for Schemas saved before property ids existed;
+	 * such a property is identified by its name until the Schema is next saved.
+	 */
+	public function getId(): ?string {
+		return $this->core->id;
+	}
+
 	public function getDescription(): string {
 		return $this->core->description;
 	}
@@ -55,12 +63,18 @@ abstract class PropertyDefinition {
 	 * The fields common to every Property Type.
 	 */
 	protected function coreToJson(): array {
-		return [
+		$json = [
 			'type' => $this->getPropertyType(),
 			'description' => $this->getDescription(),
 			'required' => $this->isRequired(),
 			'default' => $this->getDefault(),
 		];
+
+		if ( $this->core->id !== null ) {
+			$json['id'] = $this->core->id;
+		}
+
+		return $json;
 	}
 
 	/**
@@ -125,11 +139,14 @@ abstract class PropertyDefinition {
 			}
 		}
 
+		$propertyId = isset( $values['id'] ) && is_string( $values['id'] ) && $values['id'] !== '' ? $values['id'] : null;
+
 		$propertyCore = new PropertyCore(
 			description: $description,
 			required: $required,
 			default: $values['default'] ?? null,
 			constraintSeverities: $severities,
+			id: $propertyId,
 		);
 
 		// The extension owning the type is disabled or failed to load. Preserve the property

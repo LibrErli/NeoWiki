@@ -6,6 +6,7 @@ interface StatementJson {
 
 	value: unknown;
 	propertyType: string;
+	propertyId?: string;
 
 }
 
@@ -32,6 +33,7 @@ export class StatementDeserializer {
 			new PropertyName( propertyName ),
 			json.propertyType,
 			this.valueDeserializer.deserialize( json.value, json.propertyType ),
+			typeof json.propertyId === 'string' && json.propertyId !== '' ? json.propertyId : undefined,
 		);
 	}
 

@@ -82,10 +82,18 @@ readonly class GetSubjectResponseItem {
 		$array = [];
 
 		foreach ( $statements->asArray() as $statement ) {
-			$array[$statement->getPropertyName()->text] = [
+			$entry = [
 				'propertyType' => $statement->getPropertyType(),
 				'value' => $statement->getValue()->toScalars()
 			];
+
+			// Include the stable property id when the statement carries one, so the client
+			// can resolve it against the Schema even after a rename (issue #1802)
+			if ( $statement->getPropertyId() !== null ) {
+				$entry['propertyId'] = $statement->getPropertyId();
+			}
+
+			$array[$statement->getPropertyName()->text] = $entry;
 		}
 
 		return $array;

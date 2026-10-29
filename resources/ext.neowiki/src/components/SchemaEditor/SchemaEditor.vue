@@ -56,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { PropertyDefinition, PropertyName } from '@/domain/PropertyDefinition';
+import { generatePropertyId, PropertyDefinition, PropertyName } from '@/domain/PropertyDefinition';
 import { Schema } from '@/domain/Schema.ts';
 import { ComponentPublicInstance, computed, provide, ref, watch } from 'vue';
 import PropertyList from '@/components/SchemaEditor/PropertyList.vue';
@@ -206,7 +206,8 @@ function createNewProperty(): PropertyDefinition {
 		type: 'text',
 		description: '',
 		required: false,
-		default: undefined
+		default: undefined,
+		id: generatePropertyId(),
 	} as PropertyDefinition;
 }
 

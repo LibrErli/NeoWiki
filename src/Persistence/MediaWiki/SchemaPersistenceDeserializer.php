@@ -34,11 +34,21 @@ class SchemaPersistenceDeserializer {
 			throw new InvalidArgumentException( 'Invalid JSON' );
 		}
 
+		$renamed = [];
+		if ( isset( $json['renamedProperties'] ) && is_array( $json['renamedProperties'] ) ) {
+			foreach ( $json['renamedProperties'] as $oldName => $propertyId ) {
+				if ( is_string( $oldName ) && is_string( $propertyId ) ) {
+					$renamed[$oldName] = $propertyId;
+				}
+			}
+		}
+
 		return new Schema(
 			name: $schemaName,
 			description: $json['description'] ?? '',
 			properties: $this->propertiesFromJson( $json ),
 			subjectsAreDependent: ( $json['subjectsAreDependent'] ?? false ) === true,
+			renamedProperties: $renamed,
 		);
 	}
 

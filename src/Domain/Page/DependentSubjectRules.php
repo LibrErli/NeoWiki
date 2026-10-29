@@ -335,7 +335,19 @@ class DependentSubjectRules {
 			return null;
 		}
 
-		$definition = $schema->hasProperty( $property ) ? $schema->getProperty( $property ) : null;
+		// Resolve via property id when the host's statements carry one (rename-safe, issue #1802)
+		$definition = null;
+		foreach ( $host->getStatements()->asArray() as $statement ) {
+			$statementId = $statement->getPropertyId();
+			if ( $statementId !== null && $statement->getPropertyName()->text === $property->text && $schema->hasPropertyWithId( $statementId ) ) {
+				$definition = $schema->getPropertyById( $statementId );
+				break;
+			}
+		}
+
+		if ( $definition === null ) {
+			$definition = $schema->hasProperty( $property ) ? $schema->getProperty( $property ) : null;
+		}
 
 		if ( !$definition instanceof RelationProperty ) {
 			return false;

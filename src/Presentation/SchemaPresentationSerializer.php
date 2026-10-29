@@ -29,9 +29,16 @@ class SchemaPresentationSerializer {
 	 * @return array<string, mixed>
 	 */
 	public function toArray( Schema $schema ): array {
-		return [ 'description' => $schema->getDescription() ]
+		$result = [ 'description' => $schema->getDescription() ]
 			+ ( $schema->subjectsAreDependent() ? [ 'subjectsAreDependent' => true ] : [] )
 			+ [ 'propertyDefinitions' => $this->propertiesToJson( $schema->getAllProperties() ) ];
+
+		$renamed = $schema->getRenamedProperties();
+		if ( $renamed !== [] ) {
+			$result['renamedProperties'] = $renamed;
+		}
+
+		return $result;
 	}
 
 	/**

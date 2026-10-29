@@ -21,19 +21,49 @@ readonly class StatementList {
 	private array $statements;
 
 	/**
+	 * @var array<string, string> Property id => property name, for statements that carry an id
+	 */
+	private array $idsToNames;
+
+	/**
 	 * @param Statement[] $statements
 	 */
 	public function __construct( array $statements = [] ) {
 		$statementsByPropertyName = [];
+		$idsToNames = [];
 
 		foreach ( $statements as $statement ) {
 			if ( !( $statement instanceof Statement ) ) {
 				throw new InvalidArgumentException( 'StatementList can only be constructed with Statement objects' );
 			}
 			$statementsByPropertyName[$statement->getPropertyName()->text] = $statement;
+
+			$propertyId = $statement->getPropertyId();
+			if ( $propertyId !== null ) {
+				$idsToNames[$propertyId] = $statement->getPropertyName()->text;
+			}
 		}
 
 		$this->statements = $statementsByPropertyName;
+		$this->idsToNames = $idsToNames;
+	}
+
+	/**
+	 * Looks up a statement by property id, resolving to the name the property currently has.
+	 * Returns null when no statement carries this id.
+	 */
+	public function getStatementById( string $propertyId ): ?Statement {
+		$name = $this->idsToNames[$propertyId] ?? null;
+
+		if ( $name === null ) {
+			return null;
+		}
+
+		return $this->statements[$name] ?? null;
+	}
+
+	public function hasStatementWithId( string $propertyId ): bool {
+		return isset( $this->idsToNames[$propertyId] );
 	}
 
 	public function getTypedRelations(): TypedRelationList {
@@ -95,6 +125,13 @@ readonly class StatementList {
 
 	public function getStatement( PropertyName $property ): ?Statement {
 		return $this->statements[$property->text] ?? null;
+	}
+
+	/**
+	 * Resolves a key that may be a property id to the property name used as key in this list.
+	 */
+	public function resolveKey( string $key ): string {
+		return $this->idsToNames[$key] ?? $key;
 	}
 
 	/**

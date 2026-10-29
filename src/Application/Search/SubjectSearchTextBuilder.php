@@ -72,11 +72,19 @@ readonly class SubjectSearchTextBuilder {
 	 * or gives it another type.
 	 */
 	private function definitionFor( Statement $statement, ?Schema $schema ): ?PropertyDefinition {
-		if ( $schema === null || !$schema->hasProperty( $statement->getPropertyName() ) ) {
+		if ( $schema === null ) {
 			return null;
 		}
 
-		$definition = $schema->getProperty( $statement->getPropertyName() );
+		// Resolve property aliases: a statement stored under an old name maps to the current property
+		$resolvedName = $schema->resolvePropertyName( $statement->getPropertyName() );
+		$propertyName = $schema->hasProperty( $resolvedName ) ? $resolvedName : $statement->getPropertyName();
+
+		if ( !$schema->hasProperty( $propertyName ) ) {
+			return null;
+		}
+
+		$definition = $schema->getProperty( $propertyName );
 
 		return $definition->getPropertyType() === $statement->getPropertyType() ? $definition : null;
 	}

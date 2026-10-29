@@ -52,10 +52,18 @@ class SubjectContentDataSerializer {
 	}
 
 	private function serializeStatement( Statement $statement ): array {
-		return [
+		$json = [
 			'propertyType' => $statement->getPropertyType(),
 			'value' => $statement->getValue()->toScalars(),
 		];
+
+		// Stable property id, so a later rename of the property name does not orphan this statement
+		$propertyId = $statement->getPropertyId();
+		if ( $propertyId !== null ) {
+			$json['propertyId'] = $propertyId;
+		}
+
+		return $json;
 	}
 
 }

@@ -12,6 +12,7 @@ export class SchemaDeserializer {
 			schema.description ?? '',
 			this.deserializePropertyDefinitions( schema.propertyDefinitions ),
 			schema.subjectsAreDependent === true,
+			schema.renamedProperties ?? {},
 		);
 	}
 

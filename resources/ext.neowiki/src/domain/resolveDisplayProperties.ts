@@ -1,4 +1,4 @@
-import type { PropertyDefinition, PropertyName } from '@/domain/PropertyDefinition';
+import { PropertyName, type PropertyDefinition } from '@/domain/PropertyDefinition';
 import type { Schema } from '@/domain/Schema';
 import type { Subject } from '@/domain/Subject';
 import type { SubjectId } from '@/domain/SubjectId';
@@ -34,22 +34,21 @@ export function resolveDisplayProperties(
 }
 
 /**
- * Every property with a value, in Schema order.
+ * Every property with a value, in Schema order. Uses the stable property id for lookup,
+ * so statements stored under an old property name are found under the current name (issue #1802).
  */
 export function resolveAllNonEmptyProperties( schema: Schema, subject: Subject ): ResolvedProperty[] {
 	const result: ResolvedProperty[] = [];
 
-	const nonEmptyNames = new Set( subject.getNamesOfNonEmptyProperties().map( ( n ) => n.toString() ) );
-
 	for ( const propertyDefinition of schema.getPropertyDefinitions() ) {
-		if ( !nonEmptyNames.has( propertyDefinition.name.toString() ) ) {
+		// Rename-safe lookup: prefer the stable property id, fall back to name/alias
+		const statement = schema.findStatementByPropertyId( subject.getStatements(), propertyDefinition );
+
+		if ( statement === undefined || statement.value === undefined ) {
 			continue;
 		}
 
-		const value = subject.getStatementValue( propertyDefinition.name );
-		if ( value !== undefined ) {
-			result.push( { propertyDefinition, value } );
-		}
+		result.push( { propertyDefinition, value: statement.value } );
 	}
 
 	return result;
@@ -79,11 +78,10 @@ function resolveByDisplayRules(
 			continue;
 		}
 
-		if ( !subject.getStatements().has( rule.property ) ) {
-			continue;
-		}
+		// Rename-safe lookup: prefer the stable property id, fall back to name
+		const statement = schema.findStatementByPropertyId( subject.getStatements(), propertyDefinition );
+		const value = statement?.value;
 
-		const value = subject.getStatementValue( rule.property );
 		if ( value === undefined ) {
 			continue;
 		}

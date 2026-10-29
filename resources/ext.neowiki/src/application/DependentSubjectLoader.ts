@@ -3,6 +3,7 @@ import { SubjectId } from '@/domain/SubjectId';
 import type { Schema } from '@/domain/Schema';
 import type { SubjectRepository } from '@/domain/SubjectRepository';
 import type { PageIdentifiers } from '@/domain/PageIdentifiers';
+import { PropertyName } from '@/domain/PropertyDefinition';
 import { Statement } from '@/domain/Statement';
 import { StatementList } from '@/domain/StatementList';
 import { type SchemaLookup, type SchemaSummary, subjectsAreDependentIn } from '@/application/SchemaLookup';
@@ -230,9 +231,10 @@ function dependentTargetIds( subject: Subject, schemas: LoadedSchemas ): string[
 
 	return propertiesTargetingDependentSubjects( schema, ( schemaName ) => schemas.get( schemaName )?.subjectsAreDependent() )
 		.flatMap( ( property ) => {
-			const value = subject.getStatements().has( property.name ) ?
-				subject.getStatements().get( property.name ).value :
-				undefined;
+			// Rename-safe lookup: prefer the stable property id, fall back to name/alias
+			const statement = schema.findStatementByPropertyId( subject.getStatements(), property );
+
+			const value = statement?.value;
 
 			return value instanceof RelationValue ? value.relations.map( ( relation ) => relation.target.text ) : [];
 		} );
@@ -246,7 +248,12 @@ function startingTargetSchema( property: RelationProperty, subject: Subject, sch
 	}
 
 	const target = schemas.get( targetNames[ 0 ] );
-	const value = subject.getStatements().has( property.name ) ? subject.getStatements().get( property.name ).value : undefined;
+	const hostSchema = schemas.get( subject.getSchemaName() );
+	// Rename-safe lookup: prefer the stable property id, fall back to name
+	const statement = hostSchema ?
+		hostSchema.findStatementByPropertyId( subject.getStatements(), property ) :
+		( subject.getStatements().has( property.name ) ? subject.getStatements().get( property.name ) : undefined );
+	const value = statement?.value;
 
 	return target?.subjectsAreDependent() === true && isValueEmpty( value ) ? target : null;
 }

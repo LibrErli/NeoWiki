@@ -8,6 +8,7 @@ use ProfessionalWiki\NeoWiki\Application\PageIdentifiersResolver;
 use ProfessionalWiki\NeoWiki\Application\PageReadAuthorizer;
 use ProfessionalWiki\NeoWiki\Application\PageSubjectsLookup;
 use ProfessionalWiki\NeoWiki\Application\Queries\GetSubject\GetSubjectResponseItem;
+use ProfessionalWiki\NeoWiki\Application\SubjectResponseItemFactory;
 use ProfessionalWiki\NeoWiki\Domain\Page\PageId;
 use ProfessionalWiki\NeoWiki\Domain\Page\PageSubjects;
 use ProfessionalWiki\NeoWiki\Domain\Subject\Subject;
@@ -20,6 +21,7 @@ readonly class GetMainSubjectQuery {
 		private PageSubjectsLookup $pageSubjectsLookup,
 		private PageIdentifiersResolver $pageIdentifiersResolver,
 		private PageReadAuthorizer $readAuthorizer,
+		private SubjectResponseItemFactory $responseItemFactory,
 	) {
 	}
 
@@ -49,11 +51,12 @@ readonly class GetMainSubjectQuery {
 	private function newResponseItem( Subject $mainSubject, PageSubjects $pageSubjects, PageId $pageId ): GetSubjectResponseItem {
 		$pageIdentifiers = $this->pageIdentifiersResolver->getIdentifiersOfPage( $pageId );
 
-		return GetSubjectResponseItem::fromSubject(
+		// Use the factory so the Subject's statements are normalized (property ids attached,
+		// renamed properties resolved) before they reach the client (issue #1802)
+		return $this->responseItemFactory->createResponseItem(
 			$mainSubject,
 			$pageIdentifiers,
-			SubjectDisplayName::labelOrPageName( $mainSubject, $pageSubjects, $pageIdentifiers?->getTitle() ?? '' ),
-			hostSubject: null
+			$pageSubjects
 		);
 	}
 

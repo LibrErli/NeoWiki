@@ -5,8 +5,10 @@ declare( strict_types = 1 );
 namespace ProfessionalWiki\NeoWiki\Application;
 
 use ProfessionalWiki\NeoWiki\Application\Queries\GetSubject\GetSubjectResponseItem;
+use ProfessionalWiki\NeoWiki\Application\Source\SchemaResolver;
 use ProfessionalWiki\NeoWiki\Domain\Page\PageIdentifiers;
 use ProfessionalWiki\NeoWiki\Domain\Page\PageSubjects;
+use ProfessionalWiki\NeoWiki\Domain\Schema\SchemaSubjectNormalizer;
 use ProfessionalWiki\NeoWiki\Domain\Subject\Subject;
 use ProfessionalWiki\NeoWiki\Domain\Subject\SubjectDisplayName;
 
@@ -19,6 +21,8 @@ readonly class SubjectResponseItemFactory {
 	public function __construct(
 		private PageSubjectsAtRevisionLookup $pageSubjectsLookup,
 		private HostSubjectBuilder $hostSubjectBuilder,
+		private SchemaResolver $schemaResolver,
+		private SchemaSubjectNormalizer $schemaSubjectNormalizer,
 	) {
 	}
 
@@ -65,6 +69,10 @@ readonly class SubjectResponseItemFactory {
 			? $subject->getLabel()?->text
 			: SubjectDisplayName::labelOrPageName( $subject, $pageSubjects, $pageName );
 
+		// Normalize: attach the Schema's stable property ids to statements stored under a
+		// (possibly old) property name, so the client can resolve them after a rename (#1802)
+		$subject = $this->normalizeSubject( $subject );
+
 		return GetSubjectResponseItem::fromSubject(
 			$subject,
 			$pageIdentifiers,
@@ -73,6 +81,99 @@ readonly class SubjectResponseItemFactory {
 				? $this->hostSubjectBuilder->build( $subject, $pageSubjects, $pageName )
 				: null
 		);
+	}
+
+	/**
+	 * Resolves the Subject's Schema and attaches stable property ids to statements:
+	 * - Statements whose name matches a current Schema property get that property's id.
+	 * - Statements stored under an old (renamed) property name get the id recorded in the
+	 *   Schema's renamedProperties map, and are re-keyed to the current name (issue #1802).
+	 * - Statements whose name matches no Schema property and no renamed entry fall back to
+	 *   a type-based heuristic: a Schema property of the same type that has no statement yet.
+	 */
+	private function normalizeSubject( Subject $subject ): Subject {
+		try {
+			$schema = $this->schemaResolver->getSchema( $subject->getSchemaReference() );
+		} catch ( \Throwable ) {
+			return $subject;
+		}
+
+		if ( $schema === null ) {
+			return $subject;
+		}
+
+		$statements = $subject->getStatements();
+		$newStatements = [];
+		$changed = false;
+
+		// Track which schema properties already have a statement by name
+		$claimedByName = [];
+		foreach ( $statements->asArray() as $key => $statement ) {
+			if ( $schema->hasProperty( $key ) ) {
+				$claimedByName[$key] = true;
+			}
+		}
+
+		foreach ( $statements->asArray() as $key => $statement ) {
+			$propertyId = $statement->getPropertyId();
+			$newKey = $key;
+
+			if ( $propertyId === null ) {
+				// 1. Direct name match in current Schema
+				if ( $schema->hasProperty( $key ) ) {
+					$property = $schema->getProperty( $key );
+					if ( $property->getId() !== null ) {
+						$propertyId = $property->getId();
+					}
+				}
+				// 2. Old name from a rename: look up the stable id via renamedProperties
+				if ( $propertyId === null ) {
+					$renamedId = $schema->propertyIdForOldName( $key );
+					if ( $renamedId !== null && $schema->hasPropertyWithId( $renamedId ) ) {
+						$propertyId = $renamedId;
+						$newKey = $schema->resolvePropertyKey( $renamedId );
+					}
+				}
+				// 3. Fallback heuristic: unclaimed schema property with the same type
+				if ( $propertyId === null && !$schema->hasProperty( $key ) ) {
+					foreach ( $schema->getAllProperties()->asMap() as $propName => $propDef ) {
+						if ( isset( $claimedByName[$propName] ) ) {
+							continue;
+						}
+						if ( $propDef->getPropertyType() === $statement->getPropertyType() && $propDef->getId() !== null ) {
+							$propertyId = $propDef->getId();
+							$newKey = $propName;
+							$claimedByName[$propName] = true;
+							break;
+						}
+					}
+				}
+			}
+
+			if ( $propertyId !== null && $propertyId !== $statement->getPropertyId() ) {
+				$statement = $statement->withPropertyId( $propertyId );
+				$changed = true;
+			}
+
+			if ( $newKey !== $key ) {
+				// Re-key the statement under the current property name
+				$statement = new \ProfessionalWiki\NeoWiki\Domain\Statement(
+					new \ProfessionalWiki\NeoWiki\Domain\Schema\PropertyName( $newKey ),
+					$statement->getPropertyType(),
+					$statement->getValue(),
+					$propertyId,
+				);
+				$changed = true;
+			}
+
+			$newStatements[$newKey] = $statement;
+		}
+
+		if ( $changed ) {
+			return $subject->withStatements( new \ProfessionalWiki\NeoWiki\Domain\Subject\StatementList( array_values( $newStatements ) ) );
+		}
+
+		return $subject;
 	}
 
 	/**

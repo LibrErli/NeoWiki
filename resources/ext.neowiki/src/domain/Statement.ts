@@ -7,6 +7,7 @@ export class Statement {
 		public readonly propertyName: PropertyName,
 		public readonly propertyType: string,
 		public readonly value: Value | undefined,
+		public readonly propertyId?: string,
 	) {
 	}
 
@@ -19,6 +20,16 @@ export class Statement {
 			this.propertyName,
 			this.propertyType,
 			value,
+			this.propertyId,
+		);
+	}
+
+	public withPropertyId( id: string | undefined ): Statement {
+		return new Statement(
+			this.propertyName,
+			this.propertyType,
+			this.value,
+			id,
 		);
 	}
 
