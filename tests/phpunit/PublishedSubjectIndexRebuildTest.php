@@ -276,6 +276,7 @@ class PublishedSubjectIndexRebuildTest extends NeoWikiIntegrationTestCase {
 			revisionPolicy: $revisionPolicy,
 			titleFormatter: $this->getServiceContainer()->getTitleFormatter(),
 			dependentSubjectRules: NeoWikiExtension::getInstance()->newUnrestrictedDependentSubjectRules(),
+			searchTextBuilder: NeoWikiExtension::getInstance()->newSubjectSearchTextBuilder(),
 			logger: $logger,
 			batchSize: $batchSize,
 		);

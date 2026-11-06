@@ -26,6 +26,9 @@ class GetSubjectSummariesApi extends SimpleHandler {
 
 	use ReadOnlyEndpoint;
 
+	/** How many properties one listing can show as columns. */
+	private const int MAX_PROPERTIES = 20;
+
 	public function __construct(
 		private readonly SubjectSummaryLookup $lookup,
 	) {
@@ -53,6 +56,7 @@ class GetSubjectSummariesApi extends SimpleHandler {
 				direction: $direction,
 				after: $after,
 				limit: $params['limit'],
+				properties: self::propertiesFrom( $params['properties'] ),
 			) ) );
 		} catch ( SubjectSummarySearchTimeoutException ) {
 			return $this->getResponseFactory()->createHttpError( 503, [
@@ -70,6 +74,26 @@ class GetSubjectSummariesApi extends SimpleHandler {
 			),
 			'nextCursor' => $summaries->nextCursor?->encode(),
 		] );
+	}
+
+	/**
+	 * The property names whose Statements each summary carries, by property name. A name longer than the
+	 * index's column is cut as the writer cuts it, so it still matches.
+	 *
+	 * @return list<string>
+	 */
+	private static function propertiesFrom( string $param ): array {
+		$properties = [];
+
+		foreach ( explode( ',', $param ) as $name ) {
+			$name = trim( $name );
+
+			if ( $name !== '' && !in_array( $name, $properties, true ) ) {
+				$properties[] = $name;
+			}
+		}
+
+		return array_slice( $properties, 0, self::MAX_PROPERTIES );
 	}
 
 	private function cursorFrom( ?string $cursor, SubjectSummarySort $sort, SortDirection $direction ): ?SubjectSummaryCursor {
@@ -101,7 +125,14 @@ class GetSubjectSummariesApi extends SimpleHandler {
 				ParamValidator::PARAM_TYPE => 'string',
 				ParamValidator::PARAM_REQUIRED => false,
 				ParamValidator::PARAM_DEFAULT => '',
-				self::PARAM_DESCRIPTION => 'Keeps Subjects whose name or page title contains it, in any case, or whose ID starts with it.',
+				self::PARAM_DESCRIPTION => 'Keeps Subjects whose name or page title contains it, in any case, or whose ID starts with it. With a schema given, also keeps Subjects one of whose Statements of the properties named in `properties` contains it in its search text.',
+			],
+			'properties' => [
+				self::PARAM_SOURCE => 'query',
+				ParamValidator::PARAM_TYPE => 'string',
+				ParamValidator::PARAM_REQUIRED => false,
+				ParamValidator::PARAM_DEFAULT => '',
+				self::PARAM_DESCRIPTION => 'Comma-separated property names whose Statements each returned Subject carries, by property name, as { propertyType, value } JSON. Omit for none. With a schema given, also the properties whose Statement values a `search` of the same request matches.',
 			],
 			'sort' => [
 				self::PARAM_SOURCE => 'query',

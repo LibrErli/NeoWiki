@@ -10,6 +10,7 @@ use MediaWiki\Title\Title;
 use ProfessionalWiki\NeoWiki\Domain\Page\PageId;
 use ProfessionalWiki\NeoWiki\Domain\Page\PageSubjects;
 use ProfessionalWiki\NeoWiki\Domain\Relation\Relation;
+use ProfessionalWiki\NeoWiki\Domain\Relation\RelationId;
 use ProfessionalWiki\NeoWiki\Domain\Schema\SchemaName;
 use ProfessionalWiki\NeoWiki\Domain\Schema\SchemaReference;
 use ProfessionalWiki\NeoWiki\Domain\Statement;
@@ -164,6 +165,76 @@ class PublishedSubjectIndexTest extends NeoWikiIntegrationTestCase {
 		$this->assertSame( [ [ self::ADA, str_repeat( 'é', 127 ), self::BABBAGE ] ], $this->relationsOf( $pageId ) );
 	}
 
+	public function testEveryStatementIsIndexedWithItsValueAndItsSearchText(): void {
+		$pageId = $this->savePage(
+			$this->subject( self::ADA, statements: [ TestStatement::build( 'Nickname', 'Ada', 'text' ) ] ),
+			$this->subject( self::ENGINE, statements: [
+				TestStatement::build( 'Power', 'Steam engine', 'text' ),
+				TestStatement::buildRelation(
+					'Inventor',
+					[ TestRelation::build( id: new RelationId( 'r1inventor11111' ), targetId: self::BABBAGE ) ]
+				),
+			] )
+		)->getPageId();
+
+		$this->assertSame(
+			[
+				[ self::ADA, 'Nickname', '{"propertyType":"text","value":["Ada"]}', 'ada' ],
+				// A relation contributes no search text: readers find the target by its own label.
+				[ self::ENGINE, 'Inventor', '{"propertyType":"relation","value":[{"id":"r1inventor11111","target":"s1tbabbage11111"}]}', null ],
+				[ self::ENGINE, 'Power', '{"propertyType":"text","value":["Steam engine"]}', 'steam engine' ],
+			],
+			$this->statementsOf( $pageId )
+		);
+	}
+
+	/**
+	 * One time for both saves, so that only the Statement differs.
+	 */
+	public function testChangingAStatementRewritesItsRowAlone(): void {
+		ConvertibleTimestamp::setFakeTime( self::MONDAY );
+		$pageId = $this->savePage(
+			$this->subject( self::ADA, statements: [
+				TestStatement::build( 'Nickname', 'Ada', 'text' ),
+				TestStatement::build( 'Power', 'Steam', 'text' ),
+			] )
+		)->getPageId();
+
+		$this->savePage(
+			$this->subject( self::ADA, statements: [
+				TestStatement::build( 'Nickname', 'Countess', 'text' ),
+				TestStatement::build( 'Power', 'Steam', 'text' ),
+			] )
+		);
+
+		$this->assertSame(
+			[
+				[ self::ADA, 'Nickname', '{"propertyType":"text","value":["Countess"]}', 'countess' ],
+				[ self::ADA, 'Power', '{"propertyType":"text","value":["Steam"]}', 'steam' ],
+			],
+			$this->statementsOf( $pageId )
+		);
+	}
+
+	public function testRemovingAStatementRemovesItsRow(): void {
+		ConvertibleTimestamp::setFakeTime( self::MONDAY );
+		$pageId = $this->savePage(
+			$this->subject( self::ADA, statements: [
+				TestStatement::build( 'Nickname', 'Ada', 'text' ),
+				TestStatement::build( 'Power', 'Steam', 'text' ),
+			] )
+		)->getPageId();
+
+		$this->savePage(
+			$this->subject( self::ADA, statements: [ TestStatement::build( 'Power', 'Steam', 'text' ) ] )
+		);
+
+		$this->assertSame(
+			[ [ self::ADA, 'Power', '{"propertyType":"text","value":["Steam"]}', 'steam' ] ],
+			$this->statementsOf( $pageId )
+		);
+	}
+
 	public function testChangingALabelRenamesThatSubjectAlone(): void {
 		$pageId = $this->savePage(
 			$this->subject( self::ADA, label: 'Ada' ),
@@ -199,6 +270,7 @@ class PublishedSubjectIndexTest extends NeoWikiIntegrationTestCase {
 
 		$this->assertSame( [ self::ADA ], array_keys( $this->subjectRowsOf( $pageId ) ) );
 		$this->assertSame( [], $this->relationsOf( $pageId ) );
+		$this->assertSame( [], $this->statementsOf( $pageId ) );
 	}
 
 	public function testRollingBackToBeforeThePageHadSubjectsRemovesTheirRows(): void {
@@ -219,7 +291,11 @@ class PublishedSubjectIndexTest extends NeoWikiIntegrationTestCase {
 			$this->subject( self::ADA ),
 			$this->subject( self::ENGINE, statements: [ $this->relating( 'Inventor', self::BABBAGE ) ] )
 		);
-		$rowsBefore = [ $this->subjectRowsOf( $revision->getPageId() ), $this->relationsOf( $revision->getPageId() ) ];
+		$rowsBefore = [
+			$this->subjectRowsOf( $revision->getPageId() ),
+			$this->relationsOf( $revision->getPageId() ),
+			$this->statementsOf( $revision->getPageId() ),
+		];
 
 		$this->newIndexThatCannotWrite()->setSubjectsOfPage(
 			new PageId( $revision->getPageId() ),
@@ -230,7 +306,11 @@ class PublishedSubjectIndexTest extends NeoWikiIntegrationTestCase {
 
 		$this->assertSame(
 			$rowsBefore,
-			[ $this->subjectRowsOf( $revision->getPageId() ), $this->relationsOf( $revision->getPageId() ) ]
+			[
+				$this->subjectRowsOf( $revision->getPageId() ),
+				$this->relationsOf( $revision->getPageId() ),
+				$this->statementsOf( $revision->getPageId() ),
+			]
 		);
 	}
 
@@ -246,14 +326,19 @@ class PublishedSubjectIndexTest extends NeoWikiIntegrationTestCase {
 
 	public function testDeletingAPageRemovesItsRows(): void {
 		$pageId = $this->savePage(
-			$this->subject( self::ADA, statements: [ $this->relating( 'Mentor', self::BABBAGE ) ] )
+			$this->subject(
+				self::ADA,
+				statements: [ $this->relating( 'Mentor', self::BABBAGE ), TestStatement::build( 'Nickname', 'Ada', 'text' ) ]
+			)
 		)->getPageId();
 		$this->assertNotSame( [], $this->relationsOf( $pageId ), 'precondition: the page has rows' );
+		$this->assertNotSame( [], $this->statementsOf( $pageId ), 'precondition: the page has Statement rows' );
 
 		$this->deletePageByName( self::PAGE );
 
 		$this->assertSame( [], $this->subjectRowsOf( $pageId ) );
 		$this->assertSame( [], $this->relationsOf( $pageId ) );
+		$this->assertSame( [], $this->statementsOf( $pageId ) );
 	}
 
 	/**
@@ -424,7 +509,8 @@ class PublishedSubjectIndexTest extends NeoWikiIntegrationTestCase {
 	private function newIndexThatCannotWrite(): DatabasePublishedSubjectIndex {
 		return new DatabasePublishedSubjectIndex(
 			$this->getServiceContainer()->getConnectionProvider()->getReplicaDatabase(),
-			NeoWikiExtension::getInstance()->newUnrestrictedDependentSubjectRules()
+			NeoWikiExtension::getInstance()->newUnrestrictedDependentSubjectRules(),
+			NeoWikiExtension::getInstance()->newSubjectSearchTextBuilder()
 		);
 	}
 

@@ -4,6 +4,7 @@ declare( strict_types = 1 );
 
 namespace ProfessionalWiki\NeoWiki\Persistence\MediaWiki;
 
+use ProfessionalWiki\NeoWiki\Application\Search\SubjectSearchTextBuilder;
 use ProfessionalWiki\NeoWiki\Domain\Page\DependentSubjectRules;
 use ProfessionalWiki\NeoWiki\Domain\Page\PageId;
 use ProfessionalWiki\NeoWiki\Domain\Page\PageSubjects;
@@ -23,6 +24,7 @@ class DatabasePublishedSubjectIndex implements PublishedSubjectIndex {
 
 	public const string SUBJECT_TABLE = 'neowiki_subject';
 	public const string RELATION_TABLE = 'neowiki_relation';
+	public const string STATEMENT_TABLE = 'neowiki_statement';
 
 	/**
 	 * Subject data can name a Schema or property at any length, so a longer name is cut here, on a character
@@ -38,6 +40,7 @@ class DatabasePublishedSubjectIndex implements PublishedSubjectIndex {
 	public function __construct(
 		private readonly IDatabase $db,
 		private readonly DependentSubjectRules $dependentSubjectRules,
+		private readonly SubjectSearchTextBuilder $searchTextBuilder,
 	) {
 	}
 
@@ -50,25 +53,27 @@ class DatabasePublishedSubjectIndex implements PublishedSubjectIndex {
 		$this->writePage(
 			$pageId,
 			$this->subjectRows( $pageName, $subjects, $publishedTimestamp ),
-			$this->relationRows( $subjects )
+			$this->relationRows( $subjects ),
+			$this->statementRows( $subjects )
 		);
 	}
 
 	public function removePage( PageId $pageId ): void {
-		$this->writePage( $pageId, [], [] );
+		$this->writePage( $pageId, [], [], [] );
 	}
 
 	/**
 	 * @param array<string, array<string, string|int|null>> $wantedSubjectRows
 	 * @param array<string, array<string, string>> $wantedRelationRows
+	 * @param array<string, array<string, string|null>> $wantedStatementRows
 	 */
-	private function writePage( PageId $pageId, array $wantedSubjectRows, array $wantedRelationRows ): void {
+	private function writePage( PageId $pageId, array $wantedSubjectRows, array $wantedRelationRows, array $wantedStatementRows ): void {
 		// No lock: on the edit path, a read stale enough to matter implies a stale parent revision, which
 		// PageUpdater refuses.
 		$storedSubjectRows = $this->storedSubjectRows( $pageId );
 
-		// Relation rows only ever come with Subject rows, so a page that has and wants none has nothing else
-		// to compare.
+		// Relation and Statement rows only ever come with Subject rows, so a page that has and wants none has
+		// nothing else to compare.
 		if ( $storedSubjectRows === [] && $wantedSubjectRows === [] ) {
 			return;
 		}
@@ -80,8 +85,9 @@ class DatabasePublishedSubjectIndex implements PublishedSubjectIndex {
 		$keptSubjectRows = array_diff_key( $storedSubjectRows, $subjectChanges->deletions );
 		$newEditTime = self::newEditTimeOfKeptRows( $keptSubjectRows, $wantedSubjectRows );
 		$relationChanges = RowChanges::between( $this->storedRelationRows( $pageId ), $wantedRelationRows );
+		$statementChanges = RowChanges::between( $this->storedStatementRows( $pageId ), $wantedStatementRows );
 
-		if ( $subjectChanges->isEmpty() && $newEditTime === null && $relationChanges->isEmpty() ) {
+		if ( $subjectChanges->isEmpty() && $newEditTime === null && $relationChanges->isEmpty() && $statementChanges->isEmpty() ) {
 			return;
 		}
 
@@ -97,6 +103,8 @@ class DatabasePublishedSubjectIndex implements PublishedSubjectIndex {
 		$this->insertSubjectRows( $pageId, array_intersect_key( $wantedSubjectRows, $subjectChanges->insertions ) );
 		$this->deleteRelationRows( $pageId, $relationChanges->deletions );
 		$this->insertRelationRows( $pageId, $relationChanges->insertions );
+		$this->deleteStatementRows( $pageId, $statementChanges->deletions );
+		$this->insertStatementRows( $pageId, $statementChanges->insertions );
 
 		$this->db->endAtomic( __METHOD__ );
 	}
@@ -203,7 +211,7 @@ class DatabasePublishedSubjectIndex implements PublishedSubjectIndex {
 		return $rows;
 	}
 
-	private static function fitNameColumn( string $name ): string {
+	public static function fitNameColumn( string $name ): string {
 		return mb_strcut( $name, 0, self::NAME_COLUMN_BYTES, 'UTF-8' );
 	}
 
@@ -225,6 +233,65 @@ class DatabasePublishedSubjectIndex implements PublishedSubjectIndex {
 	 */
 	private static function relationKey( array $row ): string {
 		return $row['nwr_subject_id'] . ' ' . $row['nwr_target_id'] . ' ' . $row['nwr_property'];
+	}
+
+	/**
+	 * One row per property a Subject has a Statement of. The search text is what the Statement's Property Type
+	 * says its value contributes, folded so a search matches it in any case.
+	 *
+	 * @return array<string, array<string, string|null>> By {@see self::statementKey()}
+	 */
+	private function statementRows( PageSubjects $subjects ): array {
+		$rows = [];
+
+		foreach ( $subjects->getAllSubjects()->asArray() as $subject ) {
+			$linesByProperty = [];
+
+			foreach ( $this->searchTextBuilder->linesOf( $subject ) as $line ) {
+				if ( $line->propertyName !== null ) {
+					$linesByProperty[$line->propertyName][] = $line->text;
+				}
+			}
+
+			foreach ( $subject->getStatements()->asArray() as $statement ) {
+				$propertyName = $statement->getPropertyName()->text;
+				$property = self::fitNameColumn( $propertyName );
+				$texts = $linesByProperty[$propertyName] ?? [];
+
+				$rows[self::statementKey( $subject->id->text, $property )] = self::statementRow(
+					$subject->id->text,
+					$property,
+					(string)json_encode( [
+						'propertyType' => $statement->getPropertyType(),
+						'value' => $statement->getValue()->toScalars(),
+					] ),
+					$texts === [] ? null : CaseInsensitiveKey::fold( implode( "\n", $texts ) )
+				);
+			}
+		}
+
+		return $rows;
+	}
+
+	/**
+	 * Builds the rows written and the rows read back alike, since the two are compared as arrays.
+	 *
+	 * @return array<string, string|null>
+	 */
+	private static function statementRow( string $subjectId, string $property, string $statement, ?string $searchText ): array {
+		return [
+			'nwst_subject_id' => $subjectId,
+			'nwst_property' => $property,
+			'nwst_statement' => $statement,
+			'nwst_search_text' => $searchText,
+		];
+	}
+
+	/**
+	 * Ids hold no spaces, so the property, which may, goes last without letting two rows share a key.
+	 */
+	private static function statementKey( string $subjectId, string $property ): string {
+		return $subjectId . ' ' . $property;
 	}
 
 	/**
@@ -292,6 +359,79 @@ class DatabasePublishedSubjectIndex implements PublishedSubjectIndex {
 		}
 
 		return $rows;
+	}
+
+	/**
+	 * @return array<string, array<string, string|null>>
+	 */
+	private function storedStatementRows( PageId $pageId ): array {
+		$result = $this->db->newSelectQueryBuilder()
+			->select( [ 'nwst_subject_id', 'nwst_property', 'nwst_statement', 'nwst_search_text' ] )
+			->from( self::STATEMENT_TABLE )
+			->where( [ 'nwst_page_id' => $pageId->id ] )
+			->caller( __METHOD__ )
+			->fetchResultSet();
+
+		$rows = [];
+
+		/** @var stdClass $row */
+		foreach ( $result as $row ) {
+			$subjectId = (string)$row->nwst_subject_id;
+			$property = (string)$row->nwst_property;
+
+			$rows[self::statementKey( $subjectId, $property )] = self::statementRow(
+				$subjectId,
+				$property,
+				(string)$row->nwst_statement,
+				$row->nwst_search_text === null ? null : (string)$row->nwst_search_text
+			);
+		}
+
+		return $rows;
+	}
+
+	/**
+	 * Each row's condition is built on its own rather than factored: factoring makes values array keys, and a
+	 * property named like an integer would then compare as a number.
+	 *
+	 * @param array<array-key, array<string, mixed>> $rows
+	 */
+	private function deleteStatementRows( PageId $pageId, array $rows ): void {
+		foreach ( array_chunk( $rows, self::RELATION_DELETE_BATCH_SIZE ) as $batch ) {
+			$this->db->newDeleteQueryBuilder()
+				->deleteFrom( self::STATEMENT_TABLE )
+				->where( [ 'nwst_page_id' => $pageId->id ] )
+				->where( $this->db->makeList(
+					array_map(
+						fn ( array $row ): string => $this->db->makeList( $row, IDatabase::LIST_AND ),
+						$batch
+					),
+					IDatabase::LIST_OR
+				) )
+				->caller( __METHOD__ )
+				->execute();
+		}
+	}
+
+	/**
+	 * Ignores a row another write stored since this one read the page, as insertSubjectRows() does.
+	 *
+	 * @param array<array-key, array<string, mixed>> $rows
+	 */
+	private function insertStatementRows( PageId $pageId, array $rows ): void {
+		if ( $rows === [] ) {
+			return;
+		}
+
+		$this->db->newInsertQueryBuilder()
+			->insertInto( self::STATEMENT_TABLE )
+			->ignore()
+			->rows( array_map(
+				static fn ( array $row ): array => [ 'nwst_page_id' => $pageId->id, ...$row ],
+				array_values( $rows )
+			) )
+			->caller( __METHOD__ )
+			->execute();
 	}
 
 	/**

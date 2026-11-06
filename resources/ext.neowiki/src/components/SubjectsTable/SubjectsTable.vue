@@ -26,12 +26,37 @@
 						:menu-items="schemaMenuItems"
 						:aria-label="$i18n( 'neowiki-subjects-schema-label' ).text()"
 					/>
+					<CdxMultiselectLookup
+						v-if="schema !== undefined"
+						v-model:input-value="propertyInput"
+						class="ext-neowiki-subjects-table__columns"
+						:input-chips="propertyChips"
+						:selected="selectedProperties"
+						:menu-items="propertyMenuItems"
+						:placeholder="$i18n( 'neowiki-subjects-columns-placeholder' ).text()"
+						:aria-label="$i18n( 'neowiki-subjects-columns-label' ).text()"
+						@update:selected="onPropertiesSelected"
+						@update:input-chips="onPropertyChips"
+					/>
 					<CdxSearchInput
 						v-model="searchText"
 						class="ext-neowiki-subjects-table__search"
-						:placeholder="$i18n( 'neowiki-subjects-search-placeholder' ).text()"
-						:aria-label="$i18n( 'neowiki-subjects-search-placeholder' ).text()"
+						:placeholder="searchPlaceholder"
+						:aria-label="searchPlaceholder"
 					/>
+					<CdxMenuButton
+						v-if="schema !== undefined"
+						v-model:selected="downloadSelection"
+						class="ext-neowiki-subjects-table__download"
+						:menu-items="downloadMenuItems"
+						:disabled="exporting"
+						:aria-label="$i18n( 'neowiki-subjects-download' ).text()"
+						:title="$i18n( 'neowiki-subjects-download' ).text()"
+						@update:selected="download"
+					>
+						<CdxIcon :icon="cdxIconDownload" />
+						{{ $i18n( 'neowiki-subjects-download' ).text() }}
+					</CdxMenuButton>
 					<CdxButton
 						v-if="fixedSchema === undefined && canCreate && createsWithoutHost"
 						class="ext-neowiki-subjects-table__create"
@@ -71,6 +96,24 @@
 				/>
 			</template>
 
+			<!-- One slot per property column, named after it. The name is dynamic, so vue-tsc types the slot
+				props as the component instance; the compiler does render one slot per column. The key belongs on
+				the template: a slot has no element of its own to key. -->
+			<!-- eslint-disable vue/no-v-for-template-key -->
+			<template
+				v-for="column in propertyColumnList"
+				:key="column.id"
+				#[`item-${column.id}`]="{ row }"
+			>
+				<!-- @vue-ignore -->
+				<SubjectPropertyCell
+					:schema="schema"
+					:property-name="column.property"
+					:summary="row"
+				/>
+			</template>
+			<!-- eslint-enable vue/no-v-for-template-key -->
+
 			<!-- Codex shows the empty state whenever the table has no rows, so also while the first ones load. -->
 			<template
 				v-if="!loading"
@@ -84,19 +127,40 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onScopeDispose, ref, watch } from 'vue';
-import { CdxButton, CdxIcon, CdxSearchInput, CdxSelect, CdxTable } from '@wikimedia/codex';
-import type { MenuItemData, TableSort } from '@wikimedia/codex';
-import { cdxIconAdd } from '@wikimedia/codex-icons';
+import {
+	CdxButton,
+	CdxIcon,
+	CdxMenuButton,
+	CdxMultiselectLookup,
+	CdxSearchInput,
+	CdxSelect,
+	CdxTable
+} from '@wikimedia/codex';
+import type { ChipInputItem, MenuButtonItemData, MenuItemData, TableSort } from '@wikimedia/codex';
+import { cdxIconAdd, cdxIconDownload } from '@wikimedia/codex-icons';
 import SubjectSummaryCell from './SubjectSummaryCell.vue';
+import SubjectPropertyCell from './SubjectPropertyCell.vue';
+import type { Schema } from '@/domain/Schema.ts';
 import { NeoWikiServices } from '@/NeoWikiServices.ts';
 import { useCursorPagination } from '@/composables/useCursorPagination.ts';
 import { useSchemaStore } from '@/stores/SchemaStore.ts';
 import { isSubjectFirst } from '@/wikiMode.ts';
 import type { SubjectSummary } from '@/application/SubjectSummaryLookup.ts';
 import type { SchemaSummary } from '@/application/SchemaLookup.ts';
+import { propertyDisplayName } from '@/presentation/propertyDisplayName.ts';
+import { downloadFile } from '@/presentation/downloadFile.ts';
+import {
+	collectSubjectsForExport,
+	exportFileName,
+	MAX_EXPORT_SUBJECTS,
+	subjectsToCsv,
+	subjectsToJson
+} from './subjectsExport.ts';
 import {
 	emptyStateMessage,
 	failureMessage,
+	propertyColumnLabel,
+	propertyColumns,
 	schemaMenuNames,
 	subjectColumns,
 	summaryOrder
@@ -108,10 +172,13 @@ const props = withDefaults( defineProps<{
 	/** The Schema the menu starts on; null starts on every Schema. */
 	initialSchema?: string | null;
 	canCreate?: boolean;
+	/** The Schema whose properties the reader can add as columns; only a Schema's own page passes it. */
+	schema?: Schema;
 }>(), {
 	fixedSchema: undefined,
 	initialSchema: null,
-	canCreate: false
+	canCreate: false,
+	schema: undefined
 } );
 
 const emit = defineEmits<{
@@ -138,16 +205,146 @@ const sort = ref<TableSort>( {} );
 const selectedSchema = ref<string | null>( props.fixedSchema ?? props.initialSchema );
 const searchText = ref( '' );
 const appliedSearch = ref( '' );
+const selectedProperties = ref<string[]>( [] );
+const propertyInput = ref<string | number>( '' );
 const schemaSummaries = ref<SchemaSummary[]>( [] );
 const schemaNames = computed( (): string[] => schemaSummaries.value.map( ( summary ) => summary.name ) );
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let requestSequence = 0;
 
-const columns = computed( () => subjectColumns( {
-	showSchema: selectedSchema.value === null,
-	showPage: !isSubjectFirst(),
-	sortable: true
-} ) );
+const propertyColumnList = computed( () => propertyColumns( props.schema, selectedProperties.value ) );
+
+const columns = computed( () => [
+	...subjectColumns( {
+		showSchema: selectedSchema.value === null,
+		showPage: !isSubjectFirst(),
+		sortable: true
+	} ),
+	...propertyColumnList.value
+] );
+
+// Property values are searched only while they are shown as columns, so the placeholder says so only then.
+const searchPlaceholder = computed( () => props.fixedSchema === undefined || selectedProperties.value.length === 0 ?
+	mw.msg( 'neowiki-subjects-search-placeholder' ) :
+	mw.msg( 'neowiki-subjects-search-placeholder-schema' ) );
+
+/** The Schema's properties as menu items: those matching the typed text, and not already a column. */
+const propertyMenuItems = computed( (): MenuItemData[] => {
+	const schema = props.schema;
+
+	if ( schema === undefined ) {
+		return [];
+	}
+
+	const query = String( propertyInput.value ).trim().toLowerCase();
+
+	return [ ...schema.getPropertyDefinitions() ]
+		.filter( ( property ) => !selectedProperties.value.includes( property.name.toString() ) )
+		.filter( ( property ) => {
+			if ( query === '' ) {
+				return true;
+			}
+
+			return propertyDisplayName( property ).toLowerCase().includes( query ) ||
+				property.name.toString().toLowerCase().includes( query );
+		} )
+		.map( ( property ) => ( {
+			value: property.name.toString(),
+			label: propertyColumnLabel( schema, property.name.toString() )
+		} ) );
+} );
+
+const propertyChips = computed( (): ChipInputItem[] =>
+	selectedProperties.value.map( ( name ) => ( {
+		value: name,
+		label: props.schema === undefined ? name : propertyColumnLabel( props.schema, name )
+	} ) )
+);
+
+function onPropertiesSelected( names: readonly string[] ): void {
+	if ( names.some( ( name ) => !selectedProperties.value.includes( name ) ) ) {
+		propertyInput.value = '';
+	}
+
+	// Assigned only when the choice changed: Codex answers a new `selected` with another update, and an
+	// unchanged new array would keep the watchers firing.
+	if ( names.length !== selectedProperties.value.length ||
+		names.some( ( name ) => !selectedProperties.value.includes( name ) ) ) {
+		selectedProperties.value = [ ...names ];
+	}
+}
+
+// A chip the field removes takes its column with it; one it adds of its own accord picks nothing.
+function onPropertyChips( items: ChipInputItem[] ): void {
+	const values = new Set( items.map( ( chip ) => String( chip.value ) ) );
+	const kept = selectedProperties.value.filter( ( name ) => values.has( name ) );
+
+	if ( kept.length !== selectedProperties.value.length ) {
+		selectedProperties.value = kept;
+	}
+}
+
+const exporting = ref( false );
+const downloadSelection = ref<string | number | null>( null );
+
+const downloadMenuItems = computed<MenuButtonItemData[]>( () => [
+	{ value: 'json', label: mw.msg( 'neowiki-subjects-download-json' ) },
+	{ value: 'csv', label: mw.msg( 'neowiki-subjects-download-csv' ) }
+] );
+
+/**
+ * Downloads every Subject the current search narrows the listing down to — through the REST listing, page by
+ * page — as JSON or as CSV with the table's columns. The listing's read checks apply, so a download holds
+ * only what its reader may see.
+ */
+async function download( format: string | number | null ): Promise<void> {
+	downloadSelection.value = null;
+
+	if ( format !== 'json' && format !== 'csv' ) {
+		return;
+	}
+
+	exporting.value = true;
+
+	try {
+		const query = {
+			schema: selectedSchema.value,
+			search: appliedSearch.value,
+			...summaryOrder( sort.value ),
+			properties: selectedProperties.value
+		};
+		const { subjects, truncated } = await collectSubjectsForExport( lookup, query );
+		const schemaName = selectedSchema.value ?? 'all';
+
+		if ( format === 'json' ) {
+			downloadFile(
+				exportFileName( schemaName, 'json' ),
+				subjectsToJson( selectedSchema.value, appliedSearch.value, subjects ),
+				'application/json'
+			);
+		} else {
+			downloadFile(
+				exportFileName( schemaName, 'csv' ),
+				subjectsToCsv( props.schema, subjects, selectedProperties.value ),
+				'text/csv;charset=utf-8'
+			);
+		}
+
+		if ( truncated ) {
+			mw.notify(
+				mw.message( 'neowiki-subjects-export-truncated' ).params( [ String( MAX_EXPORT_SUBJECTS ) ] ).text(),
+				{ type: 'warn' }
+			);
+		}
+	} catch ( error ) {
+		mw.notify(
+			error instanceof Error ? error.message : String( error ),
+			{ title: mw.msg( 'neowiki-subjects-export-error' ), type: 'error' }
+		);
+	} finally {
+		exporting.value = false;
+	}
+}
 
 const schemaChoice = computed( {
 	get: (): string => selectedSchema.value ?? ALL_SCHEMAS,
@@ -186,7 +383,9 @@ async function fetchPage( offset: number, limit: number ): Promise<void> {
 			search: appliedSearch.value,
 			...summaryOrder( sort.value ),
 			cursor: pagination.cursorFor( offset ),
-			limit
+			limit,
+			// Only asked for when the reader chose columns: the query stays as it was otherwise.
+			...( selectedProperties.value.length > 0 ? { properties: selectedProperties.value } : {} )
 		} );
 
 		if ( sequence !== requestSequence ) {
@@ -240,7 +439,22 @@ watch( selectedSchema, ( schema ) => {
 	emit( 'update:schema', schema );
 } );
 
-watch( [ selectedSchema, appliedSearch, sort ], restart );
+// A column the Schema no longer has, as after a rename, comes down; its rows would show nothing anyway.
+watch( () => props.schema, ( schema ) => {
+	if ( schema === undefined ) {
+		selectedProperties.value = [];
+		return;
+	}
+
+	const names = new Set( [ ...schema.getPropertyDefinitions() ].map( ( property ) => property.name.toString() ) );
+	const kept = selectedProperties.value.filter( ( name ) => names.has( name ) );
+
+	if ( kept.length !== selectedProperties.value.length ) {
+		selectedProperties.value = kept;
+	}
+} );
+
+watch( [ selectedSchema, appliedSearch, sort, selectedProperties ], restart );
 
 onScopeDispose( clearSearchTimer );
 
@@ -283,6 +497,14 @@ onMounted( async () => {
 
 	&__search {
 		min-width: 16rem;
+	}
+
+	&__columns {
+		min-width: 16rem;
+	}
+
+	&__download {
+		margin-inline-start: auto;
 	}
 
 	// Scoped under the controls to outrank `.cdx-button`'s margin, which MediaWiki's Codex loads after this.

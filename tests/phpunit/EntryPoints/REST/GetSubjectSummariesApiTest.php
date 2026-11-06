@@ -12,10 +12,15 @@ use ProfessionalWiki\NeoWiki\Application\SubjectSummaries\SubjectSummaries;
 use ProfessionalWiki\NeoWiki\Application\SubjectSummaries\SubjectSummaryLookup;
 use ProfessionalWiki\NeoWiki\Application\SubjectSummaries\SubjectSummaryQuery;
 use ProfessionalWiki\NeoWiki\Application\SubjectSummaries\SubjectSummarySearchTimeoutException;
+use ProfessionalWiki\NeoWiki\Domain\Relation\RelationId;
 use ProfessionalWiki\NeoWiki\Domain\Schema\SchemaName;
+use ProfessionalWiki\NeoWiki\Domain\Subject\StatementList;
 use ProfessionalWiki\NeoWiki\Domain\Subject\SubjectMap;
+use ProfessionalWiki\NeoWiki\Domain\Value\NumberValue;
 use ProfessionalWiki\NeoWiki\EntryPoints\REST\GetSubjectSummariesApi;
 use ProfessionalWiki\NeoWiki\NeoWikiExtension;
+use ProfessionalWiki\NeoWiki\Tests\Data\TestRelation;
+use ProfessionalWiki\NeoWiki\Tests\Data\TestStatement;
 use ProfessionalWiki\NeoWiki\Tests\Data\TestSubject;
 use ProfessionalWiki\NeoWiki\Tests\NeoWikiIntegrationTestCase;
 
@@ -99,6 +104,98 @@ class GetSubjectSummariesApiTest extends NeoWikiIntegrationTestCase {
 			[ 'sTestGSS1111111' ],
 			array_column( $this->get( [ 'search' => ' spectrum ' ] )['subjects'], 'id' )
 		);
+	}
+
+	public function testSearchWithinASchemaMatchesAStatementValueOfAChosenProperty(): void {
+		$this->createPageWithSubjects(
+			'Page one',
+			TestSubject::build(
+				id: 'sTestGSS1111111',
+				label: 'Galaksija',
+				schemaName: new SchemaName( 'Computer' ),
+				statements: new StatementList( [ TestStatement::build( 'Notes', 'A ZX Spectrum clone', 'text' ) ] )
+			),
+			new SubjectMap()
+		);
+
+		$this->assertSame(
+			[ 'sTestGSS1111111' ],
+			array_column( $this->get( [ 'schema' => 'Computer', 'search' => 'SPECTRUM', 'properties' => 'Notes' ] )['subjects'], 'id' )
+		);
+		// Without the property chosen, and across every Schema, the value is not searched.
+		$this->assertSame( [], array_column( $this->get( [ 'schema' => 'Computer', 'search' => 'SPECTRUM' ] )['subjects'], 'id' ) );
+		$this->assertSame( [], array_column( $this->get( [ 'search' => 'SPECTRUM' ] )['subjects'], 'id' ) );
+	}
+
+	public function testCarriesTheStatementsOfTheRequestedProperties(): void {
+		$this->createPageWithSubjects(
+			'Page one',
+			TestSubject::build(
+				id: 'sTestGSS1111111',
+				label: 'ZX Spectrum 48K',
+				schemaName: new SchemaName( 'Computer' ),
+				statements: new StatementList( [
+					TestStatement::build( 'Age', new NumberValue( 42 ), 'number' ),
+					TestStatement::build( 'Notes', 'A clone', 'text' ),
+				] )
+			),
+			new SubjectMap()
+		);
+
+		$subject = $this->get( [ 'schema' => 'Computer', 'properties' => 'Age,Website' ] )['subjects'][0];
+
+		$this->assertSame( [ 'Age' => [ 'propertyType' => 'number', 'value' => 42 ] ], $subject['statements'] );
+	}
+
+	public function testCarriesARelationsTargets(): void {
+		$this->createPageWithSubjects(
+			'Vienna',
+			TestSubject::build( id: 'sTestGSS2222222', label: 'Vienna', schemaName: new SchemaName( 'City' ) ),
+			new SubjectMap()
+		);
+		$this->createPageWithSubjects(
+			'Page one',
+			TestSubject::build(
+				id: 'sTestGSS1111111',
+				label: 'KHM',
+				schemaName: new SchemaName( 'Computer' ),
+				statements: new StatementList( [ TestStatement::buildRelation(
+					'City',
+					[ TestRelation::build( id: new RelationId( 'r11111111111111' ), targetId: 'sTestGSS2222222' ) ]
+				) ] )
+			),
+			new SubjectMap()
+		);
+
+		$subject = $this->get( [ 'schema' => 'Computer', 'properties' => 'City' ] )['subjects'][0];
+
+		$this->assertSame( 'relation', $subject['statements']['City']['propertyType'] );
+		$this->assertSame(
+			[ [
+				'id' => 'sTestGSS2222222',
+				'displayName' => 'Vienna',
+				'schema' => 'City',
+				'pageTitle' => 'Vienna',
+				'isMain' => true,
+				'dependent' => false,
+			] ],
+			$subject['statements']['City']['targets']
+		);
+	}
+
+	public function testCarriesNoStatementsWhenNoPropertiesAreRequested(): void {
+		$this->createPageWithSubjects(
+			'Page one',
+			TestSubject::build(
+				id: 'sTestGSS1111111',
+				label: 'ZX Spectrum 48K',
+				schemaName: new SchemaName( 'Computer' ),
+				statements: new StatementList( [ TestStatement::build( 'Age', new NumberValue( 42 ), 'number' ) ] )
+			),
+			new SubjectMap()
+		);
+
+		$this->assertArrayNotHasKey( 'statements', $this->get( [ 'schema' => 'Computer' ] )['subjects'][0] );
 	}
 
 	public function testTheMaximumLimitIsServed(): void {

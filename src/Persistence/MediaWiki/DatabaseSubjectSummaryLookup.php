@@ -15,12 +15,15 @@ use ProfessionalWiki\NeoWiki\Application\SubjectSummaries\SubjectSummaryLookup;
 use ProfessionalWiki\NeoWiki\Application\SubjectSummaries\SubjectSummaryQuery;
 use ProfessionalWiki\NeoWiki\Application\SubjectSummaries\SubjectSummarySearchTimeoutException;
 use ProfessionalWiki\NeoWiki\Application\SubjectSummaries\SubjectSummarySort;
+use ProfessionalWiki\NeoWiki\Domain\PropertyType\Types\RelationType;
 use stdClass;
 use Wikimedia\Rdbms\DBQueryTimeoutError;
+use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\IExpression;
 use Wikimedia\Rdbms\IConnectionProvider;
 use Wikimedia\Rdbms\IReadableDatabase;
 use Wikimedia\Rdbms\LikeValue;
+use Wikimedia\Rdbms\RawSQLExpression;
 use Wikimedia\Rdbms\SelectQueryBuilder;
 use Wikimedia\Timestamp\ConvertibleTimestamp;
 
@@ -72,7 +75,7 @@ class DatabaseSubjectSummaryLookup implements SubjectSummaryLookup {
 
 				// A readable row past a full page is what says there is a next page.
 				if ( count( $summaries ) === $query->limit ) {
-					return new SubjectSummaries( $summaries, $lastServed );
+					return new SubjectSummaries( $this->withStatements( $summaries, $query ), $lastServed );
 				}
 
 				$summaries[] = $row['summary'];
@@ -86,7 +89,179 @@ class DatabaseSubjectSummaryLookup implements SubjectSummaryLookup {
 			$requested = $this->scanBound - $scanned;
 		}
 
-		return new SubjectSummaries( $summaries, null );
+		return new SubjectSummaries( $this->withStatements( $summaries, $query ), null );
+	}
+
+	/**
+	 * Attaches the Statements of the properties the query asks for, read from the Statement index: one read per
+	 * request, not one per Subject, since the index is what keeps a listing from opening every page.
+	 *
+	 * @param list<SubjectSummary> $summaries
+	 * @return list<SubjectSummary>
+	 */
+	private function withStatements( array $summaries, SubjectSummaryQuery $query ): array {
+		if ( $query->properties === [] || $summaries === [] ) {
+			return $summaries;
+		}
+
+		$db = $this->connectionProvider->getReplicaDatabase();
+		$propertiesByCutName = [];
+
+		foreach ( $query->properties as $property ) {
+			$propertiesByCutName[DatabasePublishedSubjectIndex::fitNameColumn( $property )] = $property;
+		}
+
+		$pairs = [];
+
+		foreach ( $summaries as $summary ) {
+			$pairs[] = [ 'nwst_page_id' => $summary->pageId, 'nwst_subject_id' => $summary->subjectId ];
+		}
+
+		$result = $db->newSelectQueryBuilder()
+			->select( [ 'nwst_subject_id', 'nwst_property', 'nwst_statement' ] )
+			->from( DatabasePublishedSubjectIndex::STATEMENT_TABLE )
+			->where( $db->makeList(
+				array_map(
+					static fn ( array $pair ): string => $db->makeList( $pair, IDatabase::LIST_AND ),
+					$pairs
+				),
+				IDatabase::LIST_OR
+			) )
+			->andWhere( [ 'nwst_property' => array_keys( $propertiesByCutName ) ] )
+			->caller( __METHOD__ )
+			->fetchResultSet();
+
+		$statementsBySubject = [];
+
+		/** @var stdClass $row */
+		foreach ( $result as $row ) {
+			$property = $propertiesByCutName[(string)$row->nwst_property] ?? (string)$row->nwst_property;
+
+			/** @var array{propertyType: string, value: mixed} $statement */
+			$statement = json_decode( (string)$row->nwst_statement, true );
+
+			$statementsBySubject[(string)$row->nwst_subject_id][$property] = $statement;
+		}
+
+		$this->attachRelationTargets( $db, $statementsBySubject );
+
+		return array_map(
+			static fn ( SubjectSummary $summary ): SubjectSummary =>
+				$summary->withStatements( $statementsBySubject[$summary->subjectId] ?? [] ),
+			$summaries
+		);
+	}
+
+	/**
+	 * A relation's targets read as ids alone, so a listing that shows one as a column also gets each target's
+	 * name, Schema and page, read from the Subject index in one query: the index holds what naming a target
+	 * takes, and opening every target's page does not.
+	 *
+	 * @param array<string, array<string, array{propertyType: string, value: mixed}>> $statementsBySubject
+	 */
+	private function attachRelationTargets( IReadableDatabase $db, array &$statementsBySubject ): void {
+		$targetIds = [];
+
+		foreach ( $statementsBySubject as $statements ) {
+			foreach ( $statements as $statement ) {
+				foreach ( self::targetIdsOfStatement( $statement ) as $id ) {
+					$targetIds[$id] = true;
+				}
+			}
+		}
+
+		if ( $targetIds === [] ) {
+			return;
+		}
+
+		$targets = $this->relationTargetsOf( $db, array_keys( $targetIds ) );
+
+		foreach ( $statementsBySubject as $subjectId => $statements ) {
+			foreach ( $statements as $property => $statement ) {
+				if ( $statement['propertyType'] === RelationType::NAME ) {
+					$statementsBySubject[$subjectId][$property]['targets'] = self::resolvedTargetsOf( $statement, $targets );
+				}
+			}
+		}
+	}
+
+	/**
+	 * @param array{propertyType: string, value: mixed} $statement
+	 * @return list<string>
+	 */
+	private static function targetIdsOfStatement( array $statement ): array {
+		if ( $statement['propertyType'] !== RelationType::NAME || !is_array( $statement['value'] ) ) {
+			return [];
+		}
+
+		$ids = [];
+
+		foreach ( $statement['value'] as $part ) {
+			if ( is_array( $part ) && isset( $part['target'] ) && is_string( $part['target'] ) ) {
+				$ids[] = $part['target'];
+			}
+		}
+
+		return $ids;
+	}
+
+	/**
+	 * @param array{propertyType: string, value: mixed} $statement
+	 * @param array<string, array{id: string, displayName: string|null, schema: string|null, pageTitle: string|null, isMain: bool, dependent: bool}> $targets
+	 * @return list<array{id: string, displayName: string|null, schema: string|null, pageTitle: string|null, isMain: bool, dependent: bool}>
+	 */
+	private static function resolvedTargetsOf( array $statement, array $targets ): array {
+		$resolved = [];
+
+		foreach ( self::targetIdsOfStatement( $statement ) as $id ) {
+			// A target nobody created resolves to nothing but its id.
+			$resolved[] = $targets[$id] ?? [
+				'id' => $id,
+				'displayName' => null,
+				'schema' => null,
+				'pageTitle' => null,
+				'isMain' => false,
+				'dependent' => false,
+			];
+		}
+
+		return $resolved;
+	}
+
+	/**
+	 * @param list<string> $targetIds
+	 * @return array<string, array{id: string, displayName: string|null, schema: string|null, pageTitle: string|null, isMain: bool, dependent: bool}>
+	 */
+	private function relationTargetsOf( IReadableDatabase $db, array $targetIds ): array {
+		$result = $db->newSelectQueryBuilder()
+			->select( [
+				'target.nws_subject_id', 'target.nws_display_name', 'target.nws_schema',
+				'target.nws_is_main', 'target.nws_dependent', 'page_id', 'page_namespace', 'page_title',
+			] )
+			->from( DatabasePublishedSubjectIndex::SUBJECT_TABLE, 'target' )
+			->join( 'page', null, 'page_id = target.nws_page_id' )
+			->where( [ 'target.nws_subject_id' => $targetIds ] )
+			// A Subject id on two pages resolves to the lowest page id's row, as the listing itself does.
+			->andWhere( LowestPageRows::condition( $db, 'target' ) )
+			->caller( __METHOD__ )
+			->fetchResultSet();
+
+		$targets = [];
+
+		/** @var stdClass $row */
+		foreach ( $result as $row ) {
+			$id = (string)$row->nws_subject_id;
+			$targets[$id] = [
+				'id' => $id,
+				'displayName' => $row->nws_display_name === null ? null : (string)$row->nws_display_name,
+				'schema' => (string)$row->nws_schema,
+				'pageTitle' => $this->titleFactory->newFromRow( $row )->getPrefixedText(),
+				'isMain' => (int)$row->nws_is_main === 1,
+				'dependent' => (int)$row->nws_dependent === 1,
+			];
+		}
+
+		return $targets;
 	}
 
 	/**
@@ -203,7 +378,7 @@ class DatabaseSubjectSummaryLookup implements SubjectSummaryLookup {
 		}
 
 		if ( $query->search !== '' ) {
-			$builder->andWhere( $this->searchCondition( $db, $query->search ) );
+			$builder->andWhere( $this->searchCondition( $db, $query ) );
 			$builder->setMaxExecutionTime( $this->searchTimeLimit );
 		}
 
@@ -229,12 +404,49 @@ class DatabaseSubjectSummaryLookup implements SubjectSummaryLookup {
 		return $rows;
 	}
 
-	private function searchCondition( IReadableDatabase $db, string $search ): IExpression {
+	private function searchCondition( IReadableDatabase $db, SubjectSummaryQuery $query ): IExpression {
+		$search = $query->search;
 		$containingKey = new LikeValue( $db->anyString(), CaseInsensitiveKey::of( $search ), $db->anyString() );
 
-		return $db->expr( self::NAME_KEY, IExpression::LIKE, $containingKey )
+		$condition = $db->expr( self::NAME_KEY, IExpression::LIKE, $containingKey )
 			->or( self::ALIAS . '.nws_page_key', IExpression::LIKE, $containingKey )
 			->or( self::SUBJECT_ID, IExpression::LIKE, new LikeValue( $search, $db->anyString() ) );
+
+		// Within one Schema, a search also matches what the Statements of the chosen properties hold: the
+		// columns a Schema page's Subject table shows. Without them, it stays with the name, page and ID.
+		if ( $query->schemaName !== null && $query->properties !== [] ) {
+			$condition = $condition->orExpr(
+				new RawSQLExpression( $this->statementSearchCondition( $db, $query ) )
+			);
+		}
+
+		return $condition;
+	}
+
+	/**
+	 * A Subject matches when one of its Statements of the chosen properties has search text containing the
+	 * term, in any case: the index stores that text folded, and the term is folded the same way.
+	 */
+	private function statementSearchCondition( IReadableDatabase $db, SubjectSummaryQuery $query ): string {
+		$properties = array_map(
+			DatabasePublishedSubjectIndex::fitNameColumn( ... ),
+			$query->properties
+		);
+
+		$matchingStatement = $db->newSelectQueryBuilder()
+			->select( '1' )
+			->from( DatabasePublishedSubjectIndex::STATEMENT_TABLE, 'statement' )
+			->where( 'statement.nwst_page_id = ' . self::ALIAS . '.nws_page_id' )
+			->andWhere( 'statement.nwst_subject_id = ' . self::ALIAS . '.nws_subject_id' )
+			->andWhere( [ 'statement.nwst_property' => $properties ] )
+			->andWhere( $db->expr(
+				'statement.nwst_search_text',
+				IExpression::LIKE,
+				new LikeValue( $db->anyString(), CaseInsensitiveKey::fold( $query->search ), $db->anyString() )
+			) )
+			->getSQL();
+
+		return "EXISTS ($matchingStatement)";
 	}
 
 	private function sortColumnValue( IReadableDatabase $db, SubjectSummaryCursor $after ): string|int|null {

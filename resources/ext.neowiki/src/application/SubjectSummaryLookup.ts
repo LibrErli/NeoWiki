@@ -14,6 +14,29 @@ export interface SubjectSummaryQuery {
 	/** The previous page's nextCursor; null for the first page. */
 	cursor: string | null;
 	limit: number;
+	/** Property names whose Statements each summary carries; empty for none. */
+	properties?: string[];
+}
+
+/** One Statement as the wire format carries it: its Property Type, its raw value, and for a relation its targets. */
+export interface SubjectStatementJson {
+	propertyType: string;
+	value: unknown;
+	/**
+	 * A relation Statement's targets, each with its id, display name, Schema, page title and Main/Dependent
+	 * flags, read from the Subject index. Absent for other property types.
+	 */
+	targets?: RelationTargetJson[];
+}
+
+/** A relation target as a listing resolves it, so a column can name it instead of showing its id. */
+export interface RelationTargetJson {
+	id: string;
+	displayName: string | null;
+	schema: string | null;
+	pageTitle: string | null;
+	isMain: boolean;
+	dependent: boolean;
 }
 
 export interface SubjectSummary {
@@ -27,6 +50,8 @@ export interface SubjectSummary {
 	pageTitle: string;
 	/** ISO 8601, UTC: when the Subject was last edited, which getSubjectSummaries takes from the page's last edit. */
 	lastEdited: string;
+	/** The Statements of the properties the query asked for, by property name; absent when none were asked for. */
+	statements?: Record<string, SubjectStatementJson>;
 }
 
 export interface SubjectSummaries {

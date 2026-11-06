@@ -9,6 +9,7 @@ use MediaWiki\Revision\RevisionAccessException;
 use MediaWiki\Revision\RevisionLookup;
 use MediaWiki\Title\TitleFormatter;
 use ProfessionalWiki\NeoWiki\Application\RevisionPolicy;
+use ProfessionalWiki\NeoWiki\Application\Search\SubjectSearchTextBuilder;
 use ProfessionalWiki\NeoWiki\Domain\Page\DependentSubjectRules;
 use ProfessionalWiki\NeoWiki\Domain\Page\PageId;
 use ProfessionalWiki\NeoWiki\Persistence\MediaWiki\Subject\SubjectsToPublish;
@@ -33,10 +34,11 @@ class DatabasePublishedSubjectIndexRebuilder {
 		private readonly RevisionPolicy $revisionPolicy,
 		private readonly TitleFormatter $titleFormatter,
 		DependentSubjectRules $dependentSubjectRules,
+		SubjectSearchTextBuilder $searchTextBuilder,
 		private readonly LoggerInterface $logger,
 		private readonly int $batchSize,
 	) {
-		$this->index = new DatabasePublishedSubjectIndex( $db, $dependentSubjectRules );
+		$this->index = new DatabasePublishedSubjectIndex( $db, $dependentSubjectRules, $searchTextBuilder );
 	}
 
 	/**

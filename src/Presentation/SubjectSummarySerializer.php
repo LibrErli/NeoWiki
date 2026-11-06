@@ -26,6 +26,10 @@ final class SubjectSummarySerializer {
 			$entry['hostSubject'] = SubjectPresentationSerializer::serializeHostSubject( $summary->hostSubject );
 		}
 
+		if ( $summary->statements !== [] ) {
+			$entry['statements'] = $summary->statements;
+		}
+
 		return $entry;
 	}
 

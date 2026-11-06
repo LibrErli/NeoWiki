@@ -95,4 +95,32 @@ trait ReadsPublishedSubjectIndex {
 		return $relations;
 	}
 
+	/**
+	 * @return list<array{0: string, 1: string, 2: string, 3: string|null}> Subject, property, Statement JSON and
+	 * search text, sorted
+	 */
+	private function statementsOf( int $pageId ): array {
+		$statements = [];
+
+		$result = $this->getDb()->newSelectQueryBuilder()
+			->select( [ 'nwst_subject_id', 'nwst_property', 'nwst_statement', 'nwst_search_text' ] )
+			->from( DatabasePublishedSubjectIndex::STATEMENT_TABLE )
+			->where( [ 'nwst_page_id' => $pageId ] )
+			->caller( __METHOD__ )
+			->fetchResultSet();
+
+		foreach ( $result as $row ) {
+			$statements[] = [
+				$row->nwst_subject_id,
+				$row->nwst_property,
+				$row->nwst_statement,
+				$row->nwst_search_text === null ? null : (string)$row->nwst_search_text,
+			];
+		}
+
+		sort( $statements );
+
+		return $statements;
+	}
+
 }

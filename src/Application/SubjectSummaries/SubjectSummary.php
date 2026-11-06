@@ -23,7 +23,33 @@ readonly class SubjectSummary {
 		/** ISO 8601 in UTC: when the Subject was last edited, which SubjectSummaryLookup takes from the page's last edit. */
 		public string $lastEdited,
 		public ?HostSubject $hostSubject,
+		/**
+		 * The Statements of the properties a listing asked for, by property name, as `{ propertyType, value }`
+		 * JSON. Empty when none were asked for. A property the Subject has no Statement of is absent. A
+		 * relation Statement also carries `targets`: each target's id, display name, Schema, page title,
+		 * and whether it is a Main or Dependent Subject, read from the Subject index.
+		 *
+		 * @var array<string, array{propertyType: string, value: mixed, targets?: list<array{id: string, displayName: string|null, schema: string|null, pageTitle: string|null, isMain: bool, dependent: bool}>}>
+		 */
+		public array $statements = [],
 	) {
+	}
+
+	/**
+	 * @param array<string, array{propertyType: string, value: mixed, targets?: list<array{id: string, displayName: string|null, schema: string|null, pageTitle: string|null, isMain: bool, dependent: bool}>}> $statements
+	 */
+	public function withStatements( array $statements ): self {
+		return new self(
+			$this->subjectId,
+			$this->displayName,
+			$this->displayNameIsGenerated,
+			$this->schemaName,
+			$this->pageId,
+			$this->pageTitle,
+			$this->lastEdited,
+			$this->hostSubject,
+			$statements
+		);
 	}
 
 }

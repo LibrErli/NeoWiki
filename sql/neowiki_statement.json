@@ -1,0 +1,59 @@
+[
+	{
+		"name": "neowiki_statement",
+		"comment": "One row per Subject and property on a page, as of the revision the page publishes. Written with neowiki_subject. nwst_statement holds the Statement as JSON (propertyType and value); nwst_search_text holds what the Statement's Property Type says its value contributes to search, case-folded, or is null when it contributes nothing.",
+		"columns": [
+			{
+				"name": "nwst_page_id",
+				"comment": "Page whose subject slot holds the Subject",
+				"type": "integer",
+				"options": {
+					"notnull": true,
+					"unsigned": true
+				}
+			},
+			{
+				"name": "nwst_subject_id",
+				"comment": "Subject holding the Statement",
+				"type": "binary",
+				"options": {
+					"notnull": true,
+					"length": 32
+				}
+			},
+			{
+				"name": "nwst_property",
+				"comment": "Name of the Statement's property, cut to 255 bytes on a character boundary",
+				"type": "binary",
+				"options": {
+					"notnull": true,
+					"length": 255
+				}
+			},
+			{
+				"name": "nwst_statement",
+				"comment": "The Statement as JSON: propertyType and value",
+				"type": "blob",
+				"options": {
+					"notnull": true,
+					"length": 16777215
+				}
+			},
+			{
+				"name": "nwst_search_text",
+				"comment": "Case-folded search text of the Statement's value, null when the Property Type contributes none",
+				"type": "blob",
+				"options": {
+					"notnull": false,
+					"length": 16777215
+				}
+			}
+		],
+		"indexes": [],
+		"pk": [
+			"nwst_page_id",
+			"nwst_subject_id",
+			"nwst_property"
+		]
+	}
+]

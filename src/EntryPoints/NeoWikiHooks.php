@@ -482,6 +482,7 @@ class NeoWikiHooks {
 		$updater->addExtensionTable( 'neowiki_subject_page', $sqlDirectory . '/neowiki_subject_page.sql' );
 		$updater->addExtensionTable( 'neowiki_subject', $sqlDirectory . '/neowiki_subject.sql' );
 		$updater->addExtensionTable( 'neowiki_relation', $sqlDirectory . '/neowiki_relation.sql' );
+		$updater->addExtensionTable( 'neowiki_statement', $sqlDirectory . '/neowiki_statement.sql' );
 
 		// Between creating a table and filling it, no Subject that existed before is found through it, so
 		// each backfill runs in the same update.php as the table it fills.

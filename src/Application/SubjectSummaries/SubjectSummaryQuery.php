@@ -19,6 +19,13 @@ readonly class SubjectSummaryQuery {
 		/** The last row of the previous page; null for the first page. */
 		public ?SubjectSummaryCursor $after,
 		public int $limit,
+		/**
+		 * Property names whose Statements to carry on each summary, by property name, as
+		 * `{ propertyType, value }` JSON. Empty for none, which no column of a listing shows.
+		 *
+		 * @var list<string>
+		 */
+		public array $properties = [],
 	) {
 	}
 

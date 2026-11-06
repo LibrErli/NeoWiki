@@ -73,6 +73,7 @@
 		<SubjectsTable
 			class="ext-neowiki-schema-display__subjects"
 			:fixed-schema="currentSchema.getName()"
+			:schema="currentSchema"
 		/>
 
 		<SchemaEditorDialog

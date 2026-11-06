@@ -12,10 +12,15 @@ use ProfessionalWiki\NeoWiki\Application\SubjectSummaries\SubjectSummaryCursor;
 use ProfessionalWiki\NeoWiki\Application\SubjectSummaries\SubjectSummaryQuery;
 use ProfessionalWiki\NeoWiki\Application\SubjectSummaries\SubjectSummarySearchTimeoutException;
 use ProfessionalWiki\NeoWiki\Application\SubjectSummaries\SubjectSummarySort;
+use ProfessionalWiki\NeoWiki\Domain\Relation\RelationId;
 use ProfessionalWiki\NeoWiki\Domain\Schema\SchemaName;
+use ProfessionalWiki\NeoWiki\Domain\Subject\StatementList;
 use ProfessionalWiki\NeoWiki\Domain\Subject\Subject;
 use ProfessionalWiki\NeoWiki\Domain\Subject\SubjectMap;
+use ProfessionalWiki\NeoWiki\Domain\Value\NumberValue;
 use ProfessionalWiki\NeoWiki\Persistence\MediaWiki\DatabaseSubjectSummaryLookup;
+use ProfessionalWiki\NeoWiki\Tests\Data\TestRelation;
+use ProfessionalWiki\NeoWiki\Tests\Data\TestStatement;
 use ProfessionalWiki\NeoWiki\Tests\Data\TestSubject;
 use ProfessionalWiki\NeoWiki\Tests\NeoWikiIntegrationTestCase;
 use ProfessionalWiki\NeoWiki\Tests\TestDoubles\SelectivePageReadAuthorizer;
@@ -196,6 +201,152 @@ class DatabaseSubjectSummaryLookupTest extends NeoWikiIntegrationTestCase {
 		$this->savePage( 'Page one', [ self::subject( self::OLDEST, 'A' ) ] );
 
 		$this->assertSame( [], $this->idsOf( $this->summaries( search: 'TestDSS' ) ) );
+	}
+
+	public function testSearchWithinASchemaMatchesAStatementValueAnywhereInAnyCase(): void {
+		$this->savePage( 'Page one', [
+			self::subject( self::OLDEST, 'Galaksija', statements: [ TestStatement::build( 'Notes', 'A ZX Spectrum clone', 'text' ) ] ),
+			self::subject( self::OLDER, 'Commodore 64' ),
+		] );
+
+		$this->assertSame(
+			[ self::OLDEST ],
+			$this->idsOf( $this->summaries( schema: 'Computer', search: 'SPECTRUM', properties: [ 'Notes' ] ) )
+		);
+	}
+
+	public function testSearchWithinASchemaMatchesOnlyTheChosenPropertiesValues(): void {
+		$this->savePage( 'Page one', [
+			self::subject( self::OLDEST, 'Galaksija', statements: [
+				TestStatement::build( 'Notes', 'A ZX Spectrum clone', 'text' ),
+				TestStatement::build( 'Origin', 'Yugoslavia', 'text' ),
+			] ),
+		] );
+
+		$this->assertSame(
+			[],
+			$this->idsOf( $this->summaries( schema: 'Computer', search: 'SPECTRUM', properties: [ 'Origin' ] ) )
+		);
+		$this->assertSame(
+			[ self::OLDEST ],
+			$this->idsOf( $this->summaries( schema: 'Computer', search: 'SPECTRUM', properties: [ 'Notes', 'Origin' ] ) )
+		);
+	}
+
+	public function testSearchWithinASchemaWithoutChosenPropertiesLeavesStatementValuesOut(): void {
+		$this->savePage( 'Page one', [
+			self::subject( self::OLDEST, 'Galaksija', statements: [ TestStatement::build( 'Notes', 'A ZX Spectrum clone', 'text' ) ] ),
+		] );
+
+		$this->assertSame( [], $this->idsOf( $this->summaries( schema: 'Computer', search: 'SPECTRUM' ) ) );
+	}
+
+	public function testSearchAcrossEverySchemaLeavesStatementValuesOut(): void {
+		$this->savePage( 'Page one', [
+			self::subject( self::OLDEST, 'Galaksija', statements: [ TestStatement::build( 'Notes', 'A ZX Spectrum clone', 'text' ) ] ),
+		] );
+
+		$this->assertSame( [], $this->idsOf( $this->summaries( search: 'SPECTRUM' ) ) );
+	}
+
+	public function testSummariesCarryTheStatementsOfTheRequestedProperties(): void {
+		$this->savePage( 'Page one', [
+			self::subject( self::OLDEST, 'ZX Spectrum 48K', statements: [
+				TestStatement::build( 'Age', new NumberValue( 42 ), 'number' ),
+				TestStatement::build( 'Notes', 'A clone', 'text' ),
+			] ),
+		] );
+
+		$summaries = $this->summaries( schema: 'Computer', properties: [ 'Age', 'Website' ] )->summaries;
+
+		$this->assertSame(
+			[ [ 'Age' => [ 'propertyType' => 'number', 'value' => 42 ] ] ],
+			array_map( static fn ( SubjectSummary $summary ): array => $summary->statements, $summaries )
+		);
+	}
+
+	public function testSummariesCarryNoStatementsWhenNoPropertiesAreRequested(): void {
+		$this->savePage( 'Page one', [
+			self::subject( self::OLDEST, 'ZX Spectrum 48K', statements: [ TestStatement::build( 'Age', new NumberValue( 42 ), 'number' ) ] ),
+		] );
+
+		$summaries = $this->summaries( schema: 'Computer' )->summaries;
+
+		$this->assertSame( [ [] ], array_map( static fn ( SubjectSummary $summary ): array => $summary->statements, $summaries ) );
+	}
+
+	public function testARelationStatementCarriesItsTargetsNamesAndPages(): void {
+		$this->savePage( 'Vienna', [ self::subject( 'sTestDSS4444444', 'Vienna', 'City' ) ] );
+		$this->savePage( 'Page one', [
+			self::subject( self::OLDEST, 'KHM', statements: [
+				TestStatement::buildRelation( 'City', [ TestRelation::build(
+					id: new RelationId( 'r11111111111111' ),
+					targetId: 'sTestDSS4444444'
+				) ] ),
+				TestStatement::buildRelation( 'Ghost', [ TestRelation::build(
+					id: new RelationId( 'r11111111111111' ),
+					targetId: 'sTestDSS9999999'
+				) ] ),
+			] ),
+		] );
+
+		$summaries = $this->summaries( schema: 'Computer', properties: [ 'City', 'Ghost' ] )->summaries;
+
+		$this->assertSame(
+			[
+				'City' => [
+					'propertyType' => 'relation',
+					'value' => [ [ 'id' => 'r11111111111111', 'target' => 'sTestDSS4444444' ] ],
+					'targets' => [ [
+						'id' => 'sTestDSS4444444',
+						'displayName' => 'Vienna',
+						'schema' => 'City',
+						'pageTitle' => 'Vienna',
+						'isMain' => false,
+						'dependent' => false,
+					] ],
+				],
+				'Ghost' => [
+					'propertyType' => 'relation',
+					'value' => [ [ 'id' => 'r11111111111111', 'target' => 'sTestDSS9999999' ] ],
+					// A target nobody created resolves to nothing but its id.
+					'targets' => [ [
+						'id' => 'sTestDSS9999999',
+						'displayName' => null,
+						'schema' => null,
+						'pageTitle' => null,
+						'isMain' => false,
+						'dependent' => false,
+					] ],
+				],
+			],
+			$summaries[0]->statements
+		);
+	}
+
+	public function testARelationStatementMarksADependentTarget(): void {
+		$this->assertNotNull( $this->createSchema( 'Birth', '{"subjectsAreDependent":true,"propertyDefinitions":{}}' ) );
+		$this->savePage(
+			'Page one',
+			[ self::subject( 'sTestDSS5555555', null, 'Birth' ) ],
+			self::subject( self::OLDEST, 'Ada', statements: [
+				TestStatement::buildRelation( 'Birth', [ TestRelation::build( targetId: 'sTestDSS5555555' ) ] ),
+			] )
+		);
+
+		$summaries = $this->summaries( schema: 'Computer', properties: [ 'Birth' ] )->summaries;
+
+		$this->assertSame(
+			[ [
+				'id' => 'sTestDSS5555555',
+				'displayName' => null,
+				'schema' => 'Birth',
+				'pageTitle' => 'Page one',
+				'isMain' => false,
+				'dependent' => true,
+			] ],
+			$summaries[0]->statements['Birth']['targets']
+		);
 	}
 
 	public function testASearchThatTimesOutThrowsTheSearchTimeout(): void {
@@ -491,8 +642,18 @@ class DatabaseSubjectSummaryLookupTest extends NeoWikiIntegrationTestCase {
 		$this->assertNotNull( $this->createSchema( 'Expansion card', '{"subjectsAreDependent":true,"propertyDefinitions":{}}' ) );
 	}
 
-	private static function subject( string $id, ?string $label, string $schema = 'Computer' ): Subject {
-		return TestSubject::build( id: $id, label: $label, schemaName: new SchemaName( $schema ) );
+	private static function subject(
+		string $id,
+		?string $label,
+		string $schema = 'Computer',
+		array $statements = []
+	): Subject {
+		return TestSubject::build(
+			id: $id,
+			label: $label,
+			schemaName: new SchemaName( $schema ),
+			statements: new StatementList( $statements )
+		);
 	}
 
 	/**
@@ -532,6 +693,7 @@ class DatabaseSubjectSummaryLookupTest extends NeoWikiIntegrationTestCase {
 		?PageReadAuthorizer $readAuthorizer = null,
 		int $scanBound = 1000,
 		?IConnectionProvider $connectionProvider = null,
+		array $properties = [],
 	): SubjectSummaries {
 		$lookup = new DatabaseSubjectSummaryLookup(
 			connectionProvider: $connectionProvider ?? $this->getServiceContainer()->getConnectionProvider(),
@@ -542,7 +704,7 @@ class DatabaseSubjectSummaryLookupTest extends NeoWikiIntegrationTestCase {
 		);
 
 		return $lookup->getSubjectSummaries( new SubjectSummaryQuery(
-			$schema === null ? null : new SchemaName( $schema ), $search, $sort, $direction, $after, $limit
+			$schema === null ? null : new SchemaName( $schema ), $search, $sort, $direction, $after, $limit, $properties
 		) );
 	}
 

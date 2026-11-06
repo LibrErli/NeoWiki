@@ -3,11 +3,23 @@ import type { SortDirection, SubjectSummary, SubjectSummarySort } from '@/applic
 import { displayNameOf } from '@/presentation/subjectDisplayName.ts';
 import { subjectRowLinkUrl } from '@/presentation/subjectLinks.ts';
 import { SubjectSummarySearchTimeoutError } from '@/application/SubjectSummarySearchTimeoutError.ts';
+import type { Schema } from '@/domain/Schema';
+import { PropertyName } from '@/domain/PropertyDefinition';
+import { propertyDisplayName } from '@/presentation/propertyDisplayName';
 
 export type SubjectColumnId = 'name' | 'schema' | 'page' | 'edited';
 
 export interface SubjectColumn extends TableColumn {
 	id: SubjectColumnId;
+}
+
+/** A property column's id is the property name behind this prefix, so it cannot collide with a fixed column. */
+export const PROPERTY_COLUMN_PREFIX = 'property:';
+
+export interface PropertyColumn extends TableColumn {
+	id: string;
+	/** The property whose Statement the column shows, by name. */
+	property: string;
 }
 
 const COLUMN_LABELS: Record<SubjectColumnId, string> = {
@@ -34,6 +46,33 @@ export function subjectColumns( options: { showSchema: boolean; showPage: boolea
 		label: mw.msg( COLUMN_LABELS[ id ] ),
 		allowSort: options.sortable,
 	} ) );
+}
+
+/** One column per chosen property, after the fixed ones. None without a Schema, as on every-Schema listings. */
+export function propertyColumns( schema: Schema | undefined, propertyNames: readonly string[] ): PropertyColumn[] {
+	if ( schema === undefined ) {
+		return [];
+	}
+
+	return propertyNames.map( ( name ) => ( {
+		id: PROPERTY_COLUMN_PREFIX + name,
+		property: name,
+		label: propertyColumnLabel( schema, name ),
+		allowSort: false,
+	} ) );
+}
+
+/** What a column header and the picker call the property: its label, with its name beside it when they differ. */
+export function propertyColumnLabel( schema: Schema, name: string ): string {
+	const propertyName = new PropertyName( name, true );
+
+	if ( !schema.getPropertyDefinitions().has( propertyName ) ) {
+		return name;
+	}
+
+	const label = propertyDisplayName( schema.getPropertyDefinition( propertyName ) );
+
+	return label === name ? name : `${ label } (${ name })`;
 }
 
 /** Whether the listing can be sorted by this column, under the sort of the same name. */

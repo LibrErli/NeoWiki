@@ -7,6 +7,9 @@ import { useSchemaStore } from '@/stores/SchemaStore.ts';
 import { createI18nMock, findNextPageButton, setupMwMock } from '../../VueTestHelpers.ts';
 import type { SubjectSummaries, SubjectSummary, SubjectSummaryQuery } from '@/application/SubjectSummaryLookup.ts';
 import { SubjectSummarySearchTimeoutError } from '@/application/SubjectSummarySearchTimeoutError.ts';
+import { Schema } from '@/domain/Schema.ts';
+import { PropertyDefinitionList } from '@/domain/PropertyDefinitionList.ts';
+import { PropertyName } from '@/domain/PropertyDefinition.ts';
 
 function summary( id: string, overrides: Partial<SubjectSummary> = {} ): SubjectSummary {
 	return {
@@ -395,6 +398,142 @@ describe( 'SubjectsTable', () => {
 		await wrapper.find( '.ext-neowiki-subjects-table__create' ).trigger( 'click' );
 
 		expect( wrapper.emitted( 'create' ) ).toEqual( [ [ undefined ] ] );
+	} );
+
+	describe( 'property columns', () => {
+
+		const schema = new Schema( 'Computer', '', new PropertyDefinitionList( [
+			{ name: new PropertyName( 'Age' ), type: 'number', description: '', required: false },
+			{ name: new PropertyName( 'Website' ), type: 'url', description: '', required: false },
+		] ), false );
+
+		function findPropertyPicker( wrapper: VueWrapper ): VueWrapper {
+			return wrapper.find( '.ext-neowiki-subjects-table__controls' )
+				.findComponent( { name: 'CdxMultiselectLookup' } );
+		}
+
+		it( 'offers the Schema\'s properties as columns on a Schema page', async () => {
+			const wrapper = mountTable( { fixedSchema: 'Computer', schema } );
+			await flushPromises();
+
+			expect( findPropertyPicker( wrapper ).exists() ).toBe( true );
+		} );
+
+		it( 'offers no property picker without a Schema, as on Special:Subjects', async () => {
+			const wrapper = mountTable( { fixedSchema: 'Computer' } );
+			await flushPromises();
+
+			expect( findPropertyPicker( wrapper ).exists() ).toBe( false );
+		} );
+
+		it( 'asks for no Statements while no property is chosen', async () => {
+			mountTable( { fixedSchema: 'Computer', schema } );
+			await flushPromises();
+
+			expect( lastQuery() ).not.toHaveProperty( 'properties' );
+		} );
+
+		it( 'adds a column per chosen property and asks for its Statements', async () => {
+			const wrapper = mountTable( { fixedSchema: 'Computer', schema } );
+			await flushPromises();
+
+			findPropertyPicker( wrapper ).vm.$emit( 'update:selected', [ 'Age', 'Website' ] );
+			await flushPromises();
+
+			expect( columnLabels( wrapper ) ).toEqual( [
+				'neowiki-subjects-column-subject', 'neowiki-subjects-column-page', 'neowiki-subjects-column-edited',
+				'Age', 'Website',
+			] );
+			expect( lastQuery().properties ).toEqual( [ 'Age', 'Website' ] );
+		} );
+
+		it( 'takes a column back down when its property is unchosen', async () => {
+			const wrapper = mountTable( { fixedSchema: 'Computer', schema } );
+			await flushPromises();
+
+			findPropertyPicker( wrapper ).vm.$emit( 'update:selected', [ 'Age' ] );
+			await flushPromises();
+			findPropertyPicker( wrapper ).vm.$emit( 'update:selected', [] );
+			await flushPromises();
+
+			expect( columnLabels( wrapper ) ).not.toContain( 'Age' );
+			expect( lastQuery() ).not.toHaveProperty( 'properties' );
+		} );
+
+	} );
+
+	describe( 'download', () => {
+
+		const schema = new Schema( 'Computer', '', new PropertyDefinitionList( [
+			{ name: new PropertyName( 'Age' ), type: 'number', description: '', required: false },
+		] ), false );
+
+		function findDownloadMenu( wrapper: VueWrapper ): VueWrapper {
+			return wrapper.find( '.ext-neowiki-subjects-table__controls' )
+				.findComponent( { name: 'CdxMenuButton' } );
+		}
+
+		function findPropertyPicker( wrapper: VueWrapper ): VueWrapper {
+			return wrapper.find( '.ext-neowiki-subjects-table__controls' )
+				.findComponent( { name: 'CdxMultiselectLookup' } );
+		}
+
+		beforeEach( () => {
+			Object.defineProperty( URL, 'createObjectURL', { value: vi.fn( () => 'blob:mock' ), configurable: true } );
+			Object.defineProperty( URL, 'revokeObjectURL', { value: vi.fn(), configurable: true } );
+			vi.spyOn( HTMLAnchorElement.prototype, 'click' ).mockImplementation( () => undefined );
+		} );
+
+		it( 'offers no download without a Schema, as on Special:Subjects', async () => {
+			const wrapper = mountTable( { fixedSchema: 'Computer' } );
+			await flushPromises();
+
+			expect( findDownloadMenu( wrapper ).exists() ).toBe( false );
+		} );
+
+		it( 'offers a download on a Schema page', async () => {
+			const wrapper = mountTable( { fixedSchema: 'Computer', schema } );
+			await flushPromises();
+
+			expect( findDownloadMenu( wrapper ).exists() ).toBe( true );
+		} );
+
+		it( 'downloads as JSON every Subject the search and the chosen columns narrow the listing to', async () => {
+			const wrapper = mountTable( { fixedSchema: 'Computer', schema } );
+			await flushPromises();
+
+			await searchFor( wrapper, 'zx' );
+			findPropertyPicker( wrapper ).vm.$emit( 'update:selected', [ 'Age' ] );
+			await flushPromises();
+
+			findDownloadMenu( wrapper ).vm.$emit( 'update:selected', 'json' );
+			await flushPromises();
+
+			const queries: SubjectSummaryQuery[] = getSubjectSummaries.mock.calls.map( ( call ) => call[ 0 ] );
+			const downloadQuery = queries[ queries.length - 1 ];
+
+			expect( downloadQuery ).toMatchObject( {
+				schema: 'Computer', search: 'zx', properties: [ 'Age' ], limit: 50, cursor: null,
+			} );
+			expect( URL.createObjectURL ).toHaveBeenCalledTimes( 1 );
+			expect( ( URL.createObjectURL as ReturnType<typeof vi.fn> ).mock.calls[ 0 ][ 0 ].type )
+				.toBe( 'application/json' );
+		} );
+
+		it( 'downloads as CSV with the table\'s columns', async () => {
+			const wrapper = mountTable( { fixedSchema: 'Computer', schema } );
+			await flushPromises();
+
+			findPropertyPicker( wrapper ).vm.$emit( 'update:selected', [ 'Age' ] );
+			await flushPromises();
+
+			findDownloadMenu( wrapper ).vm.$emit( 'update:selected', 'csv' );
+			await flushPromises();
+
+			expect( ( URL.createObjectURL as ReturnType<typeof vi.fn> ).mock.calls[ 0 ][ 0 ].type )
+				.toBe( 'text/csv;charset=utf-8' );
+		} );
+
 	} );
 
 } );

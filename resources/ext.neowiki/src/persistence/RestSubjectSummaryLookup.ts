@@ -36,6 +36,10 @@ export class RestSubjectSummaryLookup implements SubjectSummaryLookup {
 			params.set( 'cursor', query.cursor );
 		}
 
+		if ( query.properties !== undefined && query.properties.length > 0 ) {
+			params.set( 'properties', query.properties.join( ',' ) );
+		}
+
 		const response = await this.httpClient.get(
 			`${ this.mediaWikiRestApiUrl }/neowiki/v0/subjects?${ params.toString() }`,
 		).catch( ( error: unknown ) => {

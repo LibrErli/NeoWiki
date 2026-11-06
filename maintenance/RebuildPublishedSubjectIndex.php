@@ -96,6 +96,7 @@ class RebuildPublishedSubjectIndex extends LoggedUpdateMaintenance {
 			revisionPolicy: NeoWikiExtension::getInstance()->getRevisionPolicy(),
 			titleFormatter: $this->getServiceContainer()->getTitleFormatter(),
 			dependentSubjectRules: NeoWikiExtension::getInstance()->newUnrestrictedDependentSubjectRules(),
+			searchTextBuilder: NeoWikiExtension::getInstance()->newSubjectSearchTextBuilder(),
 			logger: LoggerFactory::getInstance( 'NeoWiki' ),
 			batchSize: $this->getBatchSize(),
 		);

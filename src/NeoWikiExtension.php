@@ -721,7 +721,8 @@ class NeoWikiExtension {
 	private function newPublishedSubjectIndex(): PublishedSubjectIndex {
 		return new DatabasePublishedSubjectIndex(
 			MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase(),
-			$this->newUnrestrictedDependentSubjectRules()
+			$this->newUnrestrictedDependentSubjectRules(),
+			$this->newSubjectSearchTextBuilder()
 		);
 	}
 
@@ -1487,10 +1488,14 @@ class NeoWikiExtension {
 		);
 	}
 
-	private function newSubjectSearchTextBuilder(): SubjectSearchTextBuilder {
+	/**
+	 * Resolves every Schema, whoever makes the request, as the published Subject index needs: it writes for every
+	 * reader alike, and maintenance scripts, which write it too, run as an anonymous user.
+	 */
+	public function newSubjectSearchTextBuilder(): SubjectSearchTextBuilder {
 		return new SubjectSearchTextBuilder(
 			$this->getPropertyTypeLookup(),
-			$this->getSchemaResolver()
+			$this->newSchemaResolver( $this->newSchemaLookup( $this->newUnrestrictedAuthority() ) )
 		);
 	}
 

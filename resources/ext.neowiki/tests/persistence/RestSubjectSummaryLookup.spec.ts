@@ -107,6 +107,33 @@ describe( 'RestSubjectSummaryLookup', () => {
 		expect( await lookup.getRecentlyEditedSubjects( 3 ) ).toEqual( RESULT.subjects );
 	} );
 
+	it( 'passes the properties to show as columns, and reads their Statements back', async () => {
+		const withStatements = {
+			subjects: [ {
+				...ZX_SPECTRUM_JSON,
+				statements: { Age: { propertyType: 'number', value: 42 } },
+			} ],
+			nextCursor: null,
+		};
+		const lookup = newLookup( {
+			[ `${ REST_URL }/neowiki/v0/subjects?search=&sort=newest&direction=desc&limit=10&schema=Computer&properties=Age%2CWebsite` ]:
+				jsonResponse( withStatements ),
+		} );
+
+		const result = await lookup.getSubjectSummaries( {
+			schema: 'Computer', search: '', sort: 'newest', direction: 'desc', cursor: null, limit: 10,
+			properties: [ 'Age', 'Website' ],
+		} );
+
+		expect( result.subjects[ 0 ].statements ).toEqual( { Age: { propertyType: 'number', value: 42 } } );
+	} );
+
+	it( 'sends no properties parameter when no columns are chosen', async () => {
+		const lookup = newLookup( { [ LIST_URL ]: jsonResponse( RESULT_JSON ) } );
+
+		expect( await lookup.getSubjectSummaries( { ...FIRST_PAGE, properties: [] } ) ).toEqual( RESULT );
+	} );
+
 	it( 'throws when the Subjects edited last cannot be fetched', async () => {
 		const lookup = newLookup( {
 			[ RECENTLY_EDITED_URL ]: { ok: false, json: async () => ( { subjects: RESULT_JSON.subjects } ) } as Response,

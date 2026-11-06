@@ -19,11 +19,17 @@ class CaseInsensitiveKey {
 	private const int MAX_BYTES = 255;
 
 	public static function of( string $text ): string {
+		return mb_strcut( self::fold( $text ), 0, self::MAX_BYTES, 'UTF-8' );
+	}
+
+	/**
+	 * The case-folded form a text is stored in to be matched without case, uncut: for columns too wide for
+	 * {@see self::of()}, where a cut would let a term past the cut match nothing.
+	 */
+	public static function fold( string $text ): string {
 		// Normalized before folding, so that canonically equivalent spellings fold alike, and after it, since
 		// folding can leave a text outside NFC.
-		$folded = mb_convert_case( Validator::cleanUp( $text ), MB_CASE_FOLD, 'UTF-8' );
-
-		return mb_strcut( Validator::cleanUp( $folded ), 0, self::MAX_BYTES, 'UTF-8' );
+		return Validator::cleanUp( (string)mb_convert_case( Validator::cleanUp( $text ), MB_CASE_FOLD, 'UTF-8' ) );
 	}
 
 }
